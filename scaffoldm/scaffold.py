@@ -42,16 +42,80 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 # Key - Tuple - contig and scaffold
 # item - start point and end point in contig, orientation, downstream contig
 ###############################################################################
-class Scaffold(object):
+
+import dataloader
+import dataparser
+import fancyalgorithm
+import gapestimator
+import sys
+import os
+
+class Scaffold(dataloader):
     """Utilities wrapper"""
     def __init__(self,
-                 cov=False,
+				 bammloc,
+                 contigloc,
                  links=True,
-                 bammloc,
-                 contigloc):
+                 cov=False):
 
-        
-	self.Scaffold={}
+		dataloader.__init__(self,bammloc,contigloc,links,cov)
+		
+		##The scaffold will have the following structure
+		##The key - (scaffold name, contig name)
+		##Value - start point, end point, orientation
+		##Cover duplicates with forced name addition
+		self.Scaffold={}
+		
+		self.contigNames=[]
+		
+		for key in self.scaffold:
+			self.contigNames.append(key[0])
+			
+	###Fancy algorithm will be replaced with the function which determines
+	###assignment of contigs to scaffolds
+	###Picks start,end and orientation
+	fancyalgorithm(self)
+	###Gapestimator - implementation of sahlini et al 2013 gap estimation
+	###Appends gap size to all self.Scaffold list entries for
+	### scaffold tig pairs
+	gapestimator(self)
+	
+	
+	def arrangetigs(self, contigname,contigspec):
+		##Simple, takes slice and rearranges contig for scaffodl making
+		##Orientation - 0 normal, 1 flipped
+		tigseq=extractcontigs(self,contigname,self.contigloc)
+		start=contigspec[0]
+		end=contigspec[1]
+		orientation=contigspec[2]
+		if not orientation:
+			return tigseq[start:end:1]
+		elif orientation:
+			if start==1:
+				return tigseq[end::-1]
+			else:
+				return tigseq[end:start-1:-1]
+		
+	def makescaffold():
+		
+		Scaffolds={}
+		ContigsSets=[]
+		for key in self.scaffolds:
+			if key not in Scaffolds.iterkeys():
+				Scaffolds[key[0]]=[key[1]]
+		
+		
+		
+		Scaffolds=list(Scaffolds).sort()
+		Contigs=self.contigNames.sort()
+		
+		for fold in Scaffolds:
+			for tig in fold:
+				self.scaffold[(
+
+				
+				
+		
     def extractcontigs(self,contigname,contigloc):
     ###Just assigns contigs file via contigloc.
 	###Temporary just for use when making scaffold
@@ -81,17 +145,12 @@ class Scaffold(object):
         except:
             print "Error opening file:", contigfile,sys.exc_info()[0]
             raise
-	
-	self.contignames=self.scaffold.keys()
 	#all_keys = set().union(*(d.keys() for d in mylist)) gets all
 	# from list of dicts
-    def extname(pathname):
-		
-		
-		return nam
-        
-        
+
 	def printscaffold(self):
+		
+		
 		
 		
 		
