@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 ###############################################################################
 #                                                                             #
-#    scaffold  .py                                                            #
+#    sacffold  .py                                                            #
 #                                                                             #
-#    Class for storing and printing scaffolds and associated summary info     #
+#    Class for storing and printing scaffolds and assoicated summary info     #
 #                                                                             #
 #    Copyright (C) Alexander Baker                                            #
 #                                                                             #
@@ -35,3 +35,19 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 ###############################################################################
 ###############################################################################
+#This files is the overall wrapper for the project
+#It will call all the classes, dataloader, dataparser and scaffold  
+#(Will maybe make a contig class)
+#Progess is expected as follows
+#dataloader is called - passes data to data parsers
+#data parser calls gapest and algo to create the scaffold dicitonary
+#Scaffold class is called and created for each scaffold
+#Handles commandline input and python package organisation
+###############################################################################
+
+class wrapper(object):
+	
+	
+	
+	
+	

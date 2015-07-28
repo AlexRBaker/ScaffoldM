@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 ###############################################################################
 #                                                                             #
-#    sacffold  .py                                                            #
+#    scaffold  .py                                                            #
 #                                                                             #
-#    Class for storing and printing scaffolds and assoicated summary info     #
+#    Class for storing and printing scaffolds and associated summary info     #
 #                                                                             #
 #    Copyright (C) Alexander Baker                                            #
 #                                                                             #
@@ -61,15 +61,17 @@ class Scaffold(dataloader):
 		dataloader.__init__(self,bammloc,contigloc,links,cov)
 		
 		##The scaffold will have the following structure
-		##The key - (scaffold name, contig name)
-		##Value - start point, end point, orientation
+		##The key - scaffold name
+		##value - dictionary with contig names as key
+		##Inner value -start,end, orientation, position in scaffold
 		##Cover duplicates with forced name addition
-		self.Scaffold={}
-		
+		self.scaffold={}
+		self.name=bamname+"scaffold"
 		self.contigNames=[]
+		self.linesize=70
 		
-		for key in self.scaffold:
-			self.contigNames.append(key[0])
+		for key in self.scaffold[scaffoldname]:
+			self.contigNames.append(key)
 			
 	###Fancy algorithm will be replaced with the function which determines
 	###assignment of contigs to scaffolds
@@ -80,103 +82,112 @@ class Scaffold(dataloader):
 	### scaffold tig pairs
 	gapestimator(self)
 	
-	
+	def extractcontigs(contigname,contigloc):
+		'''Just assigns contigs file via contigloc.
+		Temporary just for use when making scaffold
+		Will extract the text for that contig'''
+		import sys
+		try:
+			with open(contigloc,'r') as Contigs:
+				head=Contigs.readline()
+				if not head.startswith('>'):
+					raise TypeError("Not a FASTA file:")
+				Contigs.seek(0)
+				title=head[1:].rstrip() ##Strips whitespace and >
+				record=0
+				contigseq=[]
+				for line in Contigs:
+					if line.startswith('>') and line.find(contigname)>=0:
+						record=1
+						contigseq.append(line)
+					elif line.startswith('>') and contigname not in line:
+						record=0
+					elif record==1:
+						contigseq.append(line)
+					else:
+						pass
+				seq=''.join(contigseq)
+				return seq
+		except:
+			print "Error opening file:", contigfile,sys.exc_info()[0]
+			raise
+	#all_keys = set().union(*(d.keys() for d in mylist)) gets all
+	# from list of dicts
 	def arrangetigs(self, contigname,contigspec):
-		##Simple, takes slice and rearranges contig for scaffodl making
+		##Simple, takes slice and rearranges contig for scaffold making
 		##Orientation - 0 normal, 1 flipped
-		tigseq=extractcontigs(self,contigname,self.contigloc)
+		tigseq=extractcontigs(contigname,self.contigloc)
 		start=contigspec[0]
 		end=contigspec[1]
 		orientation=contigspec[2]
-		if not orientation:
+		if start==end:
+			return tigseq[::(1-2*orientation)]
+		elif not orientation:
 			return tigseq[start:end:1]
 		elif orientation:
-			if start==1:
+			if start==0:
 				return tigseq[end::-1]
 			else:
 				return tigseq[end:start-1:-1]
-		
-	def makescaffold():
-		
-		Scaffolds={}
-		ContigsSets=[]
-		for key in self.scaffolds:
-			if key not in Scaffolds.iterkeys():
-				Scaffolds[key[0]]=[key[1]]
-		
-		
-		
-		Scaffolds=list(Scaffolds).sort()
-		Contigs=self.contigNames.sort()
-		
-		for fold in Scaffolds:
-			for tig in fold:
-				self.scaffold[(
-
-				
-				
-		
-    def extractcontigs(self,contigname,contigloc):
-    ###Just assigns contigs file via contigloc.
-	###Temporary just for use when making scaffold
-    ###Will extract the text for that contig
-        import sys
-        try:
-            with open(contigfile,'r') as Contigs:
-                head=Contigs.readline()
-                if not head.startswith('>'):
-                    raise TypeError("Not a FASTA file:")
-                Contigs.seek(0)
-                title=head[1:].rstrip() ##Strips whitespace and >
-                record=0
-                contigseq=[]
-                for line in Contigs:
-                    if line.startswith('>') and line.find(contigname)>=0:
-                        record=1
-                        contigseq.append(line)
-                    elif line.startswith('>') and contigname not in line:
-                        record=0
-                    elif record==1:
-                        contigseq.append(line)
-                    else:
-                        pass
-                seq=''.join(contigseq)
-                return seq
-        except:
-            print "Error opening file:", contigfile,sys.exc_info()[0]
-            raise
-	#all_keys = set().union(*(d.keys() for d in mylist)) gets all
-	# from list of dicts
-
+			
 	def printscaffold(self):
+			'''contigspec gonna probably be 5 entries - start,end,orientaiton.
+		gap,order
+		'''
+		scaffoldname=self.name
+		##First check if file exists
+		filename=scaffoldname+".fasta"
+		gapsize=3
+		linesize=70
+		OrderInScaffold=4
+		if not os.path.isfile(filename):
+			scaffile=open(filename,'w')
+			scaffile.close()
+		##Sorts the items in the scaffold by the order in scaffold parameter
+		##Then, loops over this sorted list of tuples and extracts key
+		##Then, return list of contig name in sorted order in scaffold
+		Contigs=[item[0] for item in sorted(self.scaffold[scaffoldname].items(),\
+		key=lambda input:input[1][OrderInScaffold])]
 		
-		
-		
-		
-		
-		
-		
-		
-    def runCommand(self, cmd):
-        """Run a command and take care of stdout
+		with open(filename,'a') as scaffile:
+			for tig in Contigs:
+				for segment in chunker(arrangetigs(self,tig,\
+					self.scaffold[scaffoldname][tig])+\
+					self.scaffold[scaffoldname][tig][gapsize]*"N",self.linesize,"\n"):
+					scaffile.write(segment)
+					#scaffile.write(arrangetigs(self,tig,self.scaffold[scaffoldname][tig]))
+					#scaffile.write(self.scaffold[scaffoldname][tig][gapsize]*"N")
+	
+def chunker(string,chunksize,end):
+	''' Creates chunks from string and appends an end term
+	Might need to make a cleaner function to remove all end terms in string'''
+	'''Note this return generator - should be iterated over'''
+	'''I should implement this in my test for increased speed'''
+	try:
+		stringmod=string.translate(None,end)
+		for i in xrange(0,len(stringmod),chunksize):
+			if len(stringmod)>=i+chunksize:
+				yield stringmod[i:i+chunksize]+end
+			else:
+				yield stringmod[i:i+chunksize]
+	except TypeError:
+		print "end must be concatenable to string, \
+		intended use is type(str) for both"
+'''
+test from string import maketrans
 
-        expects 'cmd' to be a string like "foo -b ar"
-
-        returns (stdout, stderr)
-        """
-        from multiprocessing import Pool
-        from subprocess import Popen, PIPE
-
-        p = Popen(cmd.split(' '), stdout=PIPE)
-        return p.communicate()
-
-    def parseFile(self, filename):
-        """parse a file"""
-        import sys
-        try:
-            with open(filename, "r") as fh:
-                for line in fh:
-                    print line
-        except:
-            print "Error opening file:", filename, sys.exc_info()[0]
-            raise 
+translate goodness for cleaning string
+def test1(string,rep,char):
+	return (string*rep).translate(None,char)
+	
+	
+	
+map = maketrans('aeiou', '0' * 5)
+def str_translate(s, map):
+    return s.translate(map)
+    as far faster method of replacing characters''' 
+'''
+Just line used to experiment with yield and chunker.
+for i in chunker("".join([tig[random.randrange(0,4,1)] for i in xrange(20000)]),70,""):
+	print i
+	'''
