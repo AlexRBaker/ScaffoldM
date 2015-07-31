@@ -76,13 +76,11 @@ class Scaffold(dataloader):
 	###Fancy algorithm will be replaced with the function which determines
 	###assignment of contigs to scaffolds
 	###Picks start,end and orientation
-	fancyalgorithm(self)
 	###Gapestimator - implementation of sahlini et al 2013 gap estimation
 	###Appends gap size to all self.Scaffold list entries for
 	### scaffold tig pairs
-	gapestimator(self)
 	
-	def extractcontigs(contigname,contigloc):
+	def extractcontigs(contigname,contigloc,header=True):
 		'''Just assigns contigs file via contigloc.
 		Temporary just for use when making scaffold
 		Will extract the text for that contig'''
@@ -99,7 +97,8 @@ class Scaffold(dataloader):
 				for line in Contigs:
 					if line.startswith('>') and line.find(contigname)>=0:
 						record=1
-						contigseq.append(line)
+						if header:
+							contigseq.append(line)
 					elif line.startswith('>') and contigname not in line:
 						record=0
 					elif record==1:
@@ -131,15 +130,16 @@ class Scaffold(dataloader):
 				return tigseq[end:start-1:-1]
 			
 	def printscaffold(self):
-			'''contigspec gonna probably be 5 entries - start,end,orientaiton.
+		'''contigspec gonna probably be 5 entries - start,end,orientaiton.
 		gap,order
 		'''
 		scaffoldname=self.name
 		##First check if file exists
 		filename=scaffoldname+".fasta"
-		gapsize=3
-		linesize=70
-		OrderInScaffold=4
+		contigloc=self.contigloc
+		gapsize=3 #Index for gap between contigs
+		linesize=70 #Length of printed line
+		OrderInScaffold=4 #Ind contig place in scaffold
 		if not os.path.isfile(filename):
 			scaffile=open(filename,'w')
 			scaffile.close()
@@ -149,11 +149,28 @@ class Scaffold(dataloader):
 		Contigs=[item[0] for item in sorted(self.scaffold[scaffoldname].items(),\
 		key=lambda input:input[1][OrderInScaffold])]
 		
-		with open(filename,'a') as scaffile:
+		with open(filename,'a+') as scaffile:
 			for tig in Contigs:
-				for segment in chunker(arrangetigs(self,tig,\
-					self.scaffold[scaffoldname][tig])+\
-					self.scaffold[scaffoldname][tig][gapsize]*"N",self.linesize,"\n"):
+				scaffile.seek(0,0)
+				firstlen=len(scaffile.readline())
+				scaffile.seek(0,2)
+				ContigSeq=(arrangetigs(tig,\
+					self.scaffold[scaffoldname][tig],contigloc)+\
+					self.scaffold[scaffoldname][tig][gapsize]*"N")
+				if firstlen<linesize+1:
+					offset=firstlen
+					modseq=ContigSeq[:linesize+2].translate(None,'\n')
+					scaffile.write(modseq[:(linesize-offset)]+"\n")
+				else:
+					while scaffile.read(1)!="\n":
+						scaffile.seek(-2,1)
+					fileend=scaffile.readline()
+					offset=len(fileend)
+					modseq=ContigSeq[:linesize+2].translate(None,'\n')
+					scaffile.seek(0,2)
+					scaffile.write(modseq[:(linesize-offset)]+"\n")
+				for segment in chunker(ContigSeq[(linesize-offset):],linesize,"\n"):
+					print segment,
 					scaffile.write(segment)
 					#scaffile.write(arrangetigs(self,tig,self.scaffold[scaffoldname][tig]))
 					#scaffile.write(self.scaffold[scaffoldname][tig][gapsize]*"N")
