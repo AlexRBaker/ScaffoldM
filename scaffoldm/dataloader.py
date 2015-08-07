@@ -35,14 +35,14 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 ###############################################################################
 ###############################################################################
-from bamm.bamParser import BamParser
-from bamm.bamFile import BM_coverageType
-from bamm.cWrapper import *
+#from bamm.bamParser import BamParser - 7/08 - removed
+#from bamm.bamFile import BM_coverageType
+#from bamm.cWrapper import *
 import numpy as np
 import os
 import sys
-cov_type = BM_coverageType(CT.P_MEAN_OUTLIER, 1, 1)
-BP = BamParser(cov_type)
+#cov_type = BM_coverageType(CT.P_MEAN_OUTLIER, 1, 1)
+#BP = BamParser(cov_type)
 
 ###############################################################################
 ###############################################################################
@@ -58,23 +58,28 @@ BP = BamParser(cov_type)
 class DataLoader(object):
     """Utilities wrapper"""
     def __init__(self,
+                 bamnames,
+                 contigloc,
                  cov=False,
                  links=True,
-                 bammloc,
-                 contigloc):
-	####
-	# Variables:
-	# coverage - binary - store coverage info
-	# links - binary - store links info
-	# bammloc - location of bamm file/s
-	# contig loc - location of contig files
-	####
-	# Attributes
-	# One for all var (same name)
-	# Storage of Bamm processing
-	# Extraction of useful Bamm bits
-	# Some functions for getting info
-	####
+                 useBamm=True,
+                 linksname='links.tsv',
+                 covname='covs.tsv',
+                 insertname='inserts.tsv',
+                 libno='1'):
+    ####
+    # Variables:
+    # coverage - binary - store coverage info
+    # links - binary - store links info
+    # bammloc - location of bamm file/s
+    # contig loc - location of contig files
+    ####
+    # Attributes
+    # One for all var (same name)
+    # Storage of Bamm processing
+    # Extraction of useful Bamm bits
+    # Some functions for getting info
+    ####
         if cov:
             self.cov=1
         else:
@@ -83,16 +88,43 @@ class DataLoader(object):
             self.links=1
         else:
             self.links=0
-        self.bammloc=bammloc
+        self.bamnames=bamnames
         self.contigloc=contigloc
-        self.bammparse=BP.parseBams(bammloc,doLinks=self.links, /
-        doCovs=self.cov,threads=min(len(bammloc),CompThreads)
-        if self.cov:
-            self.coverages=self.bammparse.BFI.coverages
+        try:
+            if len(libno)==len(bamnames):
+                pass
+            elif len(libno)==1:
+                libno=libno*len(bamnames)
+            else:
+                pass
+        except TypeError or NameError:
+            try:
+                libno=[int(libno)]*5
+            except ValueError:
+                print "libno must be integer, a string of an integer or a list of such"
+        if useBamm:
+            #self.bammparse=BP.parseBams(bammloc,doLinks=self.links, /
+            #doCovs=self.cov,threads=min(len(bammloc),CompThreads)
+            #BP.printLinks('links.tsv')
+            sbamnames=".bam ".join(bamnames)+".bam"
+            #Alternative - continue using as CLI tool since python lib is bugged
+            if self.cov and self.links:
+                os.system("bamm parse -n %s -b %s -i %s -l %s -c %s".format(libno,sbamnames,insertname,linksname,covname))
+            elif self.links:
+                os.system("bamm parse -n %s -b %s -i %s -l %s".format(libno,sbamnames,insertname,linksname))
+            elif self.cov:
+                os.system("bamm parse -n %s -b %s -i %s -c %s".format(libno,sbamnames,insertname,covname))              
+            else:
+                print "Please Ensure you have provided appropiate input"
+        else:
+            self.bammparse=None
 
-        self.contigNames=self.bammparse.BFI.contigNames
-        
-
+        #[1:] to remove header
+        self.contigNames=list(set([x for x in getcolumn(parsetsv(covname)[1:],[0])]))
+        #Using [1:] to remove header
+        self.coverages=parsetsv(covname)[1:]
+        self.links=parsetsv(linksname)[1:]
+        self.inserts=parsetsv(insertname)[1:]
 #### Not storing contig or bamm in memory - accessing on call
 ##Might remove get functions if not used or decide to use numpy
 ##Will move to separate utility/general functions file later
@@ -100,11 +132,11 @@ class DataLoader(object):
 
 ###All for parsing tsv file of links (BamM command line output)
     def getcolumn(matrix,index):
-		try:
-			return [[row[i] for i in index] if len(index)>=2 \
-			else row[index] for row in matrix]
-		except TypeError:
-			print "The index must be a index"
+        try:
+            return [[row[i] for i in index] if len(index)>=2 \
+            else row[index[0]] for row in matrix]
+        except TypeError:
+            print "The indices must be an integer and in a list"
         
     def parsetsv(textfile="links.tsv"):
         ###Need to extend to attempt to detect delimiter
@@ -112,10 +144,6 @@ class DataLoader(object):
         import csv
         with open(textfile) as tsv:
             return [line for line in csv.reader(tsv,delimiter="\t")]
-###Will parselinks file as intermediate until I fix BamM install
-    if (False):
-		self.linksfile=parsetsv()
-            
     def findIDind(linkmatrix,ID='cid'):
         try:
             varis=getrow(linkmatrix,0)
@@ -124,85 +152,49 @@ class DataLoader(object):
         except SyntaxError or TypeError:
             print "The Id does not appear to be a string or \n the linkmatrix is not iterable"
         
-    def getlinks(self,contig1,linksfile,contig2=False):
-		morecnames=getcolumn(linksfile,1)
-        if contig2==False
-            #Indices needed to check second column
-            LinkIndices=[i for (i, j) in enumerate(getcolumn(linksfile,0))\
-             if j==contig1 or getcolumn(linksfile,1)[i]==contig1] 
-        ## Cover both cases of link being at cid 1 or cid2
-             
-            Links=[row for (i,row) in enumerate(linksfile)\
-             if j==contig1 or  in LinkIndices]
-             
-        else:
-            contig2names=getcolumn(linksfile,1) ##Gets 2nd col of contigs in links file
-            #Indices uneeded
-            LinkIndices=[i for i, j in enumerate(getcolumn(linksfile,0))#ContigsNamesfromLinkfile)\
-             if j==contig1 and getcolumn(linksfile,1)[i]==contig2]
-             ## Force to and from contigs to match specified
-             
-            Links=[row for (i,row) in enumerate(linksfile)\
-             if i in LinkIndices]
-             
-        return Links
-	##Does work - extracts linking reads and passes them out
+    def getlinks(contig1,linksfile,contig2=False):
+        try:
+            if contig2==False:
+                Links=[x for x in linksfile if contig1 in x]
+            else:
+                Links=[row for row in linksfile if (contig1 in row) and (contig2 in row)]
+            if len(Links)>0:
+                return Links
+            else:
+                return None
+        except TypeError:
+            print "Contig1 must be string, contig2 can be ither False or a string"
+            
+    ##Does work - extracts linking reads and passes them out
     ##If just contig1 then gives all reads linking contig1
     ##If both then return reads linking contig 1 and contig 2
     
     def getcov(self,contig1):
-        return [row for row in self.coverages if row[0]==contig1]
-	##Does work -extracts and returns contig coverage info
-	##maybe allow for separating on mutiply mapped libraries via BamM 
-	
-		
+        return [row for row in self.coverages if contig1 in row]
+    ##Does work -extracts and returns contig coverage info
+    ##maybe allow for separating on mutiply mapped libraries via BamM 
 
-###Now functions for parsing BamM Python module output  
-###Expect to be ~50-100 lines
+#Deprecated dictionary code in favour of running Bamm via os
+'''
 ### First pythonize C link files from BamM
     if self.links:
-		self.links=self.bammparse.pythonizeLinks\
-		(self.bammparse.BFI, os.path.basename(bamloc.strip(os.sep))
-#In bamM pythonize links calls makekey to create a key from linkpairs class	
+        self.links=self.bammparse.pythonizeLinks\
+        (self.bammparse.BFI, os.path.basename(bamloc.strip(os.sep))
+#In bamM pythonize links calls makekey to create a key from linkpairs class 
 # returns return "%d,%d" % (self.cid1, self.cid2) 
 # unsure how cid remains unique
 #need to read more on how Mike constructed his keys and values
 #need more info on the cids for that.
-	def getdictlinks(self, contig1, contig2=False):
-		try:
-			linkkeys=self.links.keys()
-			if contig2=False:
-				###Current understanding of key is a string of cid1,2 sep by comma
-				###Therefore search cid for desired contig name, extract if present
-				return [[key,self.links[key]] for key in linkkeys if contig1 in key]
-			else:
-				return [[key,self.links[key]] for key in linkkeys if contig1 in key and if contig2 in key]
-		except AttributeError:
-			print "Likely that links is not a _dict"
-		
-		
-		
-	def 
-    def runCommand(self, cmd):
-        """Run a command and take care of stdout
-
-        expects 'cmd' to be a string like "foo -b ar"
-
-        returns (stdout, stderr)
-        """
-        from multiprocessing import Pool
-        from subprocess import Popen, PIPE
-
-        p = Popen(cmd.split(' '), stdout=PIPE)
-        return p.communicate()
-
-    def parseFile(self, filename):
-        """parse a file"""
-        import sys
+    def getdictlinks(self, contig1, contig2=False):
         try:
-            with open(filename, "r") as fh:
-                for line in fh:
-                    print line
-        except:
-            print "Error opening file:", filename, sys.exc_info()[0]
-            raise 
+            linkkeys=self.links.keys()
+            if contig2=False:
+                ###Current understanding of key is a string of cid1,2 sep by comma
+                ###Therefore search cid for desired contig name, extract if present
+                return [[key,self.links[key]] for key in linkkeys if contig1 in key]
+            else:
+                return [[key,self.links[key]] for key in linkkeys if contig1 in key and if contig2 in key]
+        except AttributeError:
+            print "Likely that links is not a _dict"
+        
+'''

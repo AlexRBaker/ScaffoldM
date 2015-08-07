@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 ###############################################################################
 #                                                                             #
-#    scaffold  .py                                                            #
+#    scaffold.py                                                              #
 #                                                                             #
 #    Class for storing and printing scaffolds and associated summary info     #
 #                                                                             #
@@ -56,9 +56,9 @@ class Scaffold(dataloader):
 				 bammloc,
                  contigloc,
                  links=True,
-                 cov=False):
+                 cov=True):
 
-		dataloader.__init__(self,bammloc,contigloc,links,cov)
+		dataloader.__init__(self,bammloc,contigloc,links,cov,False)
 		
 		##The scaffold will have the following structure
 		##The key - scaffold name

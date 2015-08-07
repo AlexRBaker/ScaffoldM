@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 ###############################################################################
 #                                                                             #
-#    sacffold  .py                                                            #
+#    wrapper.py                                                               #
 #                                                                             #
 #    Class for storing and printing scaffolds and assoicated summary info     #
 #                                                                             #

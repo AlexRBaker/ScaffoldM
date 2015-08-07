@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 ###############################################################################
 #                                                                             #
-#    scaffold  .py                                                            #
+#    dataparser.py                                                            #
 #                                                                             #
 #    Class for storing and printing scaffolds and associated summary info     #
 #                                                                             #
@@ -34,4 +34,21 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 ###############################################################################
 ###############################################################################
+import dataloader
+import scaffold
 ###############################################################################
+'''
+Class which does all the precalculations needed for giving input to
+both the gapestimator and the scaffolding algorithm
+
+
+'''
+class dataparser(dataloader):
+	def __init__(self,bammloc,contigloc,links=True,cov=True):
+		dataloader.__init__(self,bammloc,contigloc,links,cov,False)
+		self.counts={}
+		self.scaffold={}
+		
+		
+		
+		
