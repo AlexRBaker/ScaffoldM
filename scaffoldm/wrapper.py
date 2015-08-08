@@ -44,10 +44,5 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 #Scaffold class is called and created for each scaffold
 #Handles commandline input and python package organisation
 ###############################################################################
-
-class wrapper(object):
-	
-	
-	
-	
-	
+dataloader=DataLoader()
+dataparser=DataParser()

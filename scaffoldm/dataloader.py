@@ -59,8 +59,8 @@ class DataLoader(object):
     """Utilities wrapper"""
     def __init__(self,
                  bamnames,
-                 contigloc,
-                 cov=False,
+                 contigloc='Dupes.fna',
+                 cov=True,
                  links=True,
                  useBamm=True,
                  linksname='links.tsv',
@@ -109,42 +109,42 @@ class DataLoader(object):
             sbamnames=".bam ".join(bamnames)+".bam"
             #Alternative - continue using as CLI tool since python lib is bugged
             if self.cov and self.links:
-                os.system("bamm parse -n %s -b %s -i %s -l %s -c %s".format(libno,sbamnames,insertname,linksname,covname))
+                os.system("bamm parse -n {0} -b {1} -i {2} -l {3} -c {4}".format(libno,sbamnames,insertname,linksname,covname))
             elif self.links:
-                os.system("bamm parse -n %s -b %s -i %s -l %s".format(libno,sbamnames,insertname,linksname))
+                os.system("bamm parse -n {0} -b {1} -i {2} -l {3}".format(libno,sbamnames,insertname,linksname))
             elif self.cov:
-                os.system("bamm parse -n %s -b %s -i %s -c %s".format(libno,sbamnames,insertname,covname))              
+                os.system("bamm parse -n {0} -b {1} -i {2} -c {3}".format(libno,sbamnames,insertname,covname))              
             else:
                 print "Please Ensure you have provided appropiate input"
         else:
             self.bammparse=None
 
         #[1:] to remove header
-        self.contigNames=list(set([x for x in getcolumn(parsetsv(covname)[1:],[0])]))
+        self.contigNames=list(set([x for x in self.getcolumn(self.parsetsv(covname)[1:],[0])]))
         #Using [1:] to remove header
-        self.coverages=parsetsv(covname)[1:]
-        self.links=parsetsv(linksname)[1:]
-        self.inserts=parsetsv(insertname)[1:]
+        self.coverages=self.parsetsv(covname)[1:]
+        self.links=self.parsetsv(linksname)[1:]
+        self.inserts=self.parsetsv(insertname)[1:]
 #### Not storing contig or bamm in memory - accessing on call
 ##Might remove get functions if not used or decide to use numpy
 ##Will move to separate utility/general functions file later
 
 
 ###All for parsing tsv file of links (BamM command line output)
-    def getcolumn(matrix,index):
+    def getcolumn(self,matrix,index):
         try:
             return [[row[i] for i in index] if len(index)>=2 \
             else row[index[0]] for row in matrix]
         except TypeError:
             print "The indices must be an integer and in a list"
         
-    def parsetsv(textfile="links.tsv"):
+    def parsetsv(self,textfile="links.tsv"):
         ###Need to extend to attempt to detect delimiter
         ##Should be existing package for this
         import csv
         with open(textfile) as tsv:
             return [line for line in csv.reader(tsv,delimiter="\t")]
-    def findIDind(linkmatrix,ID='cid'):
+    def findIDind(self,linkmatrix,ID='cid'):
         try:
             varis=getrow(linkmatrix,0)
             Colno=[i for (i, j) in enumerate(varis) if j.find(ID)>=0]
@@ -152,7 +152,7 @@ class DataLoader(object):
         except SyntaxError or TypeError:
             print "The Id does not appear to be a string or \n the linkmatrix is not iterable"
         
-    def getlinks(contig1,linksfile,contig2=False):
+    def getlinks(self,contig1,contig2=False,linksfile=self.links):
         try:
             if contig2==False:
                 Links=[x for x in linksfile if contig1 in x]
