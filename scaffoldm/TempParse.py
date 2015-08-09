@@ -110,6 +110,13 @@ def algorithm(stuff):
 
 def gapest(stuff):
 #implementation of sahlini et al 2013 algorithm.
+import os
+import sys
+from scipy.special import erf
+from scipy.stats import norm
+from scipy.constants import pi
+from math import exp
+
 
 
 def retroply(cleanedgraph):
@@ -121,4 +128,6 @@ def extractpath(graph):
 
 
 	return path
+
+
 

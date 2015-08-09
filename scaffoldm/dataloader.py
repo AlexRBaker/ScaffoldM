@@ -38,7 +38,6 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 #from bamm.bamParser import BamParser - 7/08 - removed
 #from bamm.bamFile import BM_coverageType
 #from bamm.cWrapper import *
-import numpy as np
 import os
 import sys
 #cov_type = BM_coverageType(CT.P_MEAN_OUTLIER, 1, 1)
@@ -152,18 +151,7 @@ class DataLoader(object):
         except SyntaxError or TypeError:
             print "The Id does not appear to be a string or \n the linkmatrix is not iterable"
         
-    def getlinks(self,contig1,contig2=False,linksfile=self.links):
-        try:
-            if contig2==False:
-                Links=[x for x in linksfile if contig1 in x]
-            else:
-                Links=[row for row in linksfile if (contig1 in row) and (contig2 in row)]
-            if len(Links)>0:
-                return Links
-            else:
-                return None
-        except TypeError:
-            print "Contig1 must be string, contig2 can be ither False or a string"
+
             
     ##Does work - extracts linking reads and passes them out
     ##If just contig1 then gives all reads linking contig1

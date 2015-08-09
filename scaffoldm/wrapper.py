@@ -44,5 +44,38 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 #Scaffold class is called and created for each scaffold
 #Handles commandline input and python package organisation
 ###############################################################################
-dataloader=DataLoader()
-dataparser=DataParser()
+import os
+import argparse
+###############################################################################
+if __name__ == "__main__": ###Check if arguments coming in from command line
+    
+    parser = argparse.ArgumentParser(description='CreateNewContigs.')
+
+    parser.add_argument('-N','--name', type=str, nargs='?', \
+		help='The name of the file',default='MG1655ref.fasta')
+
+    parser.add_argument('-P','--path', type=str, nargs='?', \
+	default='ReferenceFasta/', \
+		help='The name of absolute path') #old abspath /home/baker/Documents/Geneslab/TestDataset/
+
+    parser.add_argument('-L','--list', type=int, nargs='*', help='Test',default=[1000,5000,1,4000,20000,1])
+
+
+    args = parser.parse_args()
+    print(args.path+args.name,end="\n",sep='')
+    print(args.list,end="\n",sep='')
+
+    data=DataLoader(bamnames,
+                 contigloc,
+                 libno=something,
+                 linksname=linkfile,
+                 covname=covfile,
+                 insertname=insertfile,
+):)
+    ###Note dataparser will have inside it all the scaffolds made from the data.
+    parser=DataParser(  data.links,
+                            data.coverages,
+                            data.inserts,
+                            data.bamnames,
+                            data.contigNames)
+    parser.parse()
