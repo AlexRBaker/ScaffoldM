@@ -98,7 +98,7 @@ class DataLoader(object):
                 pass
         except TypeError or NameError:
             try:
-                libno=[int(libno)]*5
+                libno=[str(libno)]*len(bamnames)
             except ValueError:
                 print "libno must be integer, a string of an integer or a list of such"
         if useBamm:
@@ -107,16 +107,16 @@ class DataLoader(object):
             #BP.printLinks('links.tsv')
             sbamnames=".bam ".join(bamnames)+".bam"
             #Alternative - continue using as CLI tool since python lib is bugged
-            if self.cov and self.links:
-                os.system("bamm parse -n {0} -b {1} -i {2} -l {3} -c {4}".format(libno,sbamnames,insertname,linksname,covname))
-            elif self.links:
-                os.system("bamm parse -n {0} -b {1} -i {2} -l {3}".format(libno,sbamnames,insertname,linksname))
-            elif self.cov:
-                os.system("bamm parse -n {0} -b {1} -i {2} -c {3}".format(libno,sbamnames,insertname,covname))              
+            if self.cov==1 and self.links==1:
+                os.system("bamm parse -n {0} -b {1} -i {2} -l {3} -c {4}".format(' '.join(libno),sbamnames,insertname,linksname,covname))
+            elif self.links==1:
+                os.system("bamm parse -n {0} -b {1} -i {2} -l {3}".format(' '.join(libno),sbamnames,insertname,linksname))
+            elif self.cov==1:
+                os.system("bamm parse -n {0} -b {1} -i {2} -c {3}".format(' '.join(libno),sbamnames,insertname,covname))              
             else:
                 print "Please Ensure you have provided appropiate input"
         else:
-            self.bammparse=None
+            print 'Error using bamm'
 
         #[1:] to remove header
         self.contigNames=list(set([x for x in self.getcolumn(self.parsetsv(covname)[1:],[0])]))
@@ -156,12 +156,8 @@ class DataLoader(object):
     ##Does work - extracts linking reads and passes them out
     ##If just contig1 then gives all reads linking contig1
     ##If both then return reads linking contig 1 and contig 2
-    
     def getcov(self,contig1):
         return [row for row in self.coverages if contig1 in row]
-    ##Does work -extracts and returns contig coverage info
-    ##maybe allow for separating on mutiply mapped libraries via BamM 
-
 #Deprecated dictionary code in favour of running Bamm via os
 '''
 ### First pythonize C link files from BamM

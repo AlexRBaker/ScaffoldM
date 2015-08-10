@@ -46,34 +46,52 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 import os
 import argparse
+from dataloader import DataLoader
+from dataparser import DataParser
+from scaffold import Scaffold
 ###############################################################################
 if __name__ == "__main__": ###Check if arguments coming in from command line
-    
     parser = argparse.ArgumentParser(description='CreateNewContigs.')
-
-    parser.add_argument('-N','--name', type=str, nargs='?', \
-		help='The name of the file',default='MG1655ref.fasta')
-
-    parser.add_argument('-P','--path', type=str, nargs='?', \
-	default='ReferenceFasta/', \
-		help='The name of absolute path') #old abspath /home/baker/Documents/Geneslab/TestDataset/
-
-    parser.add_argument('-L','--list', type=int, nargs='*', help='Test',default=[1000,5000,1,4000,20000,1])
+    parser.add_argument('-b','--bam', type=str, nargs='*', \
+		help='The .bamfiles to be processed',default='Dupes.MG1655refS100E20000Complete-Empirical')
+    parser.add_argument('-f','--fasta', type=str, nargs='?', \
+	default='Dupes.fna', \
+		help='name of links file')
+    parser.add_argument('-l','--links', type=str, nargs='?', \
+	default='links.tsv', \
+		help='name of links file')
+    parser.add_argument('-c','--covs', type=str, nargs='?', \
+	default='covs.tsv', \
+		help='name of coverage file')
+    parser.add_argument('-i','--inserts', type=str, nargs='?', \
+	default='inserts.tsv', \
+		help='name of insert file')
+    parser.add_argument('-n','--librarynumber', type=int, nargs='*', \
+	default=1, \
+		help='name of insert file')
 
 
     args = parser.parse_args()
-    print(args.path+args.name,end="\n",sep='')
-    print(args.list,end="\n",sep='')
-
+    if type(args.bam)==str:
+        bamnames=[args.bam]
+    else:
+        bamnames=args.bam
+    contigloc=args.fasta
+    linksnames=args.links
+    covnames=args.covs
+    insertnames=args.inserts
+    libnos=args.librarynumber
+    print libnos
+    print args
+    
     data=DataLoader(bamnames,
                  contigloc,
-                 libno=something,
-                 linksname=linkfile,
-                 covname=covfile,
-                 insertname=insertfile,
-):)
+                 libno=libnos,
+                 linksname=linksnames,
+                 covname=covnames,
+                 insertname=insertnames)
     ###Note dataparser will have inside it all the scaffolds made from the data.
-    parser=DataParser(  data.links,
+    parser=DataParser(data.links,
                             data.coverages,
                             data.inserts,
                             data.bamnames,

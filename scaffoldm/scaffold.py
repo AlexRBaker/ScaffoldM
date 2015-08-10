@@ -121,13 +121,18 @@ class Scaffold(object):
             else:
                 return tigseq[end:start-1:-1]
             
-    def printscaffold(self,header=False):
+    def printscaffold(self,filename=None,header=False):
         '''contigspec gonna probably be 5 entries - start,end,orientaiton.
         gap,order
         '''
+        ##Can then optionally choose 
+        #to write all to one file or one for each scaffodl
+        if filename==None:
+            filename=scaffoldname+".fasta"
+        else:
+            pass
         scaffoldname=self.name
         ##First check if file exists
-        filename=scaffoldname+".fasta"
         contigloc=self.contigloc
         gapsize=3 #Index for gap between contigs
         linesize=70 #Length of printed line

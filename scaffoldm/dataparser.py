@@ -43,7 +43,7 @@ both the gapestimator and the scaffolding algorithm
 
 
 '''
-class dataparser(object):
+class DataParser(object):
     def __init__(self,
                  links,
                  coverages,
@@ -67,12 +67,25 @@ class dataparser(object):
         self.scaffoldset={}
 
     def readCounts(self,contig1,contig2,linksfile=None):
+        '''Gets counts for each orientation pair of links'''
+        #Might be able to force proper orientation here.
         if linksfile==None:
             linksfile=self.cleanedlinks
         else:
             pass
-        norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
-        rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
+        #Changes from needing to maintain relative arrangement
+        tig1ind=linksfile[0].find(contig1)
+        tig2ind=linksfile[0].find(contig2)
+        #Now maintains appropiate order, if refering to contigs in seperate arrangements
+        #This is since index determines if x[4] refers to read of tig 1 or tig 2.
+        if tig1ind<tig2ind:
+            norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
+            rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
+        elif tig2ind<tig1ind:
+            norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
+            rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
+        else:
+            print "How is this possible?"
         posinvc2=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='1')])
         posinvc1=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='0')])
         total=norm+rev+posinvc2+posinvc1
@@ -127,16 +140,92 @@ class dataparser(object):
             for contig2 in connections[contig1]:
                 Counts=self.readCounts(contig1,contig2)
                 index=[i for i,x in enumerate(Counts) if (x==max(Counts)) and (x>=threshold)]
-                OrientedGraph[contig1][contig2]=[self.linkorientation(i) for i in index if self.linkorientation(i)!=None]
-                Graph[contig1]=Graph[contig1]+[contig2]
+                if index==[]:
+                    pass
+                elif len(index)>0:
+                    for i in index:
+                        if self.linkorientation(i)!=None:
+                            OrientedGraph[contig1][contig2]=[self.linkorientation(i)]
+                    Graph[contig1]=Graph[contig1]+[contig2]
+        print Graph
+        print OrientedGraph
         return [OrientedGraph,Graph]
 
     def makescaffolds(self,Graph,OrientedGraph):
+        '''Takes Graph of all connections and one with orientations,
+        makes a dictionary of Scaffold objects for scaffoldset'''
         Scaffolds={}
-        for contig1 in Graph:
-            for contig2 in Graph[contig1]:
-                Scaffolds["Scaffold"+str(len(Scaffolds))]={}
+        isolated=self.lonetigs(Graph)
+        for tig in isolated:
+            #Add all contigs with no links as individual scaffolds
+            #Also remove from both Graph and OrientedGraph
+            Scaffolds["Scaffold"+str(len(Scaffolds))]={tig:[0,0,0,0,0]}
+            Graph.pop(tig,None)
+            OrientedGraph.pop(tig,None)
+        print Scaffolds
+        #Now need to retrieve each scaffold with the order,gapsize,orientation
+        paths=makepaths(Graph,OrientedGraph)
         return None
+        
+    def makepaths(self,Graph,OrientedGraph):
+    '''Made with assumption that isolated tigs have been removed'''
+        edges=self.makeedges(Graph)
+        badedges={}
+        for edge in edges:
+            #Check orientation, expunge all illegal arrangements
+            swap,flip=arrangenplace(OrientedGraph[edge[0]][edge[1]])
+            if swap and not flip:
+                badedges[(edge[0],edge[1])]=[0]
+            else:
+                pass
+        trueedges=[x for x in edges if x not in badedges.keys()]
+        connections={}
+        for edge in trueedges:
+            path[]
+            connections[edge]=[(1,x) if edge[1]==x[0] else (0,x) if edge[0]==x[1] for x in trueedges]
+        for key in connections:
+            paths=[]
+            for edges in connections[key]:
+                if edge[0]==0:
+                    list(key
+                elif edge[1]==1:
+                else:
+                    pass
+    #Is there some way to memoize this
+    
+    def findpath(Graph,verystart=None,start=None,end=None,path=[]):
+        if start==None: #initialise specific path
+            pass
+        elif start not in Graph:
+            return []
+        else:
+            path=path+[start]
+        if start==end and start!=None:
+            return [path]
+        paths=[]
+        if start==None:
+            for key in Graph:
+                for edge in Graph[key]:
+                    if edge not in path:
+                        print verystart,edge,"HELLLLLLLO"
+                        extrapaths=findpath(Graph,key,key,edge,path)
+                        for pathz in extrapaths:
+                            paths.append(pathz)
+        else:
+            for edge in Graph[start]:
+                if edge not in path:
+                    print verystart,start,edge
+                    extrapaths=findpath(Graph,verystart,end,edge,path)
+                    for pathz in extrapaths:
+                        paths.append(pathz)
+        return paths
+
+    def rearrange(self,lists,item1,item2):
+        '''swap two items in a list'''
+        a, b = i.index(item1), i.index(item2)
+        lists[b], lists[a] = lists[a], lists[b]
+        return lists
+        
     def arrangenplace(self,linkdirs):
         ''' Return tuple indicating how a pair of linked
         contigs should be arranged based on their read orientations'''
@@ -160,6 +249,7 @@ class dataparser(object):
         return (flipplace,flisequence)
                 
     def linkorientation(self,index):
+        '''Index of counts gives an idea of read orientation'''
         try:
             if index==0:
                 return (1,0)
@@ -193,8 +283,6 @@ class dataparser(object):
             meaninsert[name]=[x[1] for x in insertfile if name+".bam" in x]
             stdinsert[name]=[x[2] for x in insertfile if name+".bam" in x]
             ####Need to mod this list compre to get b
-        print meaninsert
-        print stdinsert
         cleanedlinks=[x for x in linksfile if self.lowerdist(x)<\
         meaninsert[x[bamnameindex].strip('.bam')]+cutoff*stdinsert[x[bamnameindex].strip('.bam')]]
         self.cleanedlinks=cleanedlinks
@@ -207,14 +295,21 @@ class dataparser(object):
         with the processed scaffolds(with gap estimate and proper orientation).
         It will also call all of the scaffolds to print to the scaffold file.'''
         self.cleanlinks() #Cleans the obviously erroneous mappings
+        self.makegraph() #Makes initial connections with no.reads>threshold
+        #self.makescaffolds() #Makes set of scaffolds
+        #self.printscaffolds()
+    def printscaffold(self,filename='testScaffold'):
+        try:
+            for key in self.scaffoldset:
+                scaffoldset[key].printscaffold('testScaffold')
+        except AttributeError:
+            print 'These scaffolds do not appear to be the scaffold class'
         
         
         return
     def lowerdist(self,onelink):
-    ###severe lower bound on gap between reads (ignores gap between contigs)
-    ###Probably need to implement gap estimation 
-    ###Without gap estimate should be sever understimate
-    #Need to check bamm if pos is end of read or middle - if middle need to get length
+        '''severe lower bound on gap between
+         reads (ignores gap between contigs)'''
         orientation1=int(onelink[4])
         orientation2=int(onelink[7])
         if orientation1:
@@ -227,14 +322,24 @@ class dataparser(object):
             dist2=int(onelink[5])-int(onelink[6])
         return (dist1+dist2)
 
-    def makevertices(self,graph):
-        vertice=[]
+    def makeedges(self,graph):
+        '''edges as (node1,node2) tuples.'''
+        edges=[]
         for key in graph:
             for point in graph[key]:
-                vertice.append((key,point))
-        return vertice
-
+                if (point,key) not in edges and (key,point):
+                    edges.append((key,point))
+        return edges
+        
+    def makepaths(self,graph):
+        '''Scaffolds are equivalent to paths along the vertices of the graph.
+        Here, scaffoldM uses the vertices to construct paths and returns them.
+        The legality of paths is not checked'''
+        vertices=makeedges(graph)
+        
     def lonetigs(self,graph):
+        '''Identifies all contigs which are not linked
+        to any other contig.'''
         singletigs=[]
         for node in graph:
             if graph[node]==[]:
@@ -244,12 +349,12 @@ class dataparser(object):
         return singletigs
 
 
-    def collapse(graph,cutoff):
+    def collapse(self,graph,cutoff):
         ''' Using the sspace-like decision process to simply the graph.
         This result in the remove of certain paths where contigs had more than 1
         pairing
         '''
-        return
+        return None
 
 
 
@@ -274,8 +379,3 @@ class dataparser(object):
             #Stuff happens
             pass
         return 200
-
-    def extractpath(self,graph):
-        '''Scaffolds are equivalent to paths through the
-        connected contig graph'''
-        return path
