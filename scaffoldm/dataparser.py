@@ -166,7 +166,8 @@ class DataParser(object):
         #Now need to retrieve each scaffold with the order,gapsize,orientation
         paths=makepaths(Graph,OrientedGraph)
         return None
-        
+
+    
     def makepaths(self,Graph,OrientedGraph):
     '''Made with assumption that isolated tigs have been removed'''
         edges=self.makeedges(Graph)
@@ -192,34 +193,46 @@ class DataParser(object):
                 else:
                     pass
     #Is there some way to memoize this
-    
-    def findpath(Graph,verystart=None,start=None,end=None,path=[]):
+    def edgejoiner(self,edges):
+        connect2={}
+        for edge in connections:
+                
+    def findpath(self,Graph,verystart=None,start=None,end=None,path=[]):
+    '''Finds all paths connecting points in a graph.'''
         if start==None: #initialise specific path
             pass
         elif start not in Graph:
             return []
         else:
             path=path+[start]
+            print verystart,start,end,path
         if start==end and start!=None:
+            print 'AM i famous now'
             return [path]
         paths=[]
-        if start==None:
+        if verystart==None:
             for key in Graph:
                 for edge in Graph[key]:
                     if edge not in path:
-                        print verystart,edge,"HELLLLLLLO"
-                        extrapaths=findpath(Graph,key,key,edge,path)
+                        print edge
+                        extrapaths=self.findpath(Graph,key,key,edge,path)
                         for pathz in extrapaths:
                             paths.append(pathz)
         else:
-            for edge in Graph[start]:
+        i=0
+            for edge in Graph[end]:
                 if edge not in path:
-                    print verystart,start,edge
-                    extrapaths=findpath(Graph,verystart,end,edge,path)
+            i+=1
+                    print verystart,start,end,edge
+                    extrapaths=self.findpath(Graph,verystart,end,edge,path)
                     for pathz in extrapaths:
                         paths.append(pathz)
+        if i==0: #End case - no more possible movements
+            extrapaths=self.findpath(Graph,verystart,end,end,path)
+            for pathz in extrapaths:
+                paths.append(pathz)
         return paths
-
+        
     def rearrange(self,lists,item1,item2):
         '''swap two items in a list'''
         a, b = i.index(item1), i.index(item2)
