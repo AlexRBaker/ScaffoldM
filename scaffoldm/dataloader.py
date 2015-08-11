@@ -159,26 +159,25 @@ class DataLoader(object):
     def getcov(self,contig1):
         return [row for row in self.coverages if contig1 in row]
 #Deprecated dictionary code in favour of running Bamm via os
-'''
-### First pythonize C link files from BamM
-    if self.links:
-        self.links=self.bammparse.pythonizeLinks\
-        (self.bammparse.BFI, os.path.basename(bamloc.strip(os.sep))
-#In bamM pythonize links calls makekey to create a key from linkpairs class 
-# returns return "%d,%d" % (self.cid1, self.cid2) 
-# unsure how cid remains unique
-#need to read more on how Mike constructed his keys and values
-#need more info on the cids for that.
-    def getdictlinks(self, contig1, contig2=False):
-        try:
-            linkkeys=self.links.keys()
-            if contig2=False:
-                ###Current understanding of key is a string of cid1,2 sep by comma
-                ###Therefore search cid for desired contig name, extract if present
-                return [[key,self.links[key]] for key in linkkeys if contig1 in key]
-            else:
-                return [[key,self.links[key]] for key in linkkeys if contig1 in key and if contig2 in key]
-        except AttributeError:
-            print "Likely that links is not a _dict"
-        
-'''
+#~ 
+#~ ### First pythonize C link files from BamM
+    #~ if self.links:
+        #~ self.links=self.bammparse.pythonizeLinks\
+        #~ (self.bammparse.BFI, os.path.basename(bamloc.strip(os.sep))
+#~ #In bamM pythonize links calls makekey to create a key from linkpairs class 
+#~ # returns return "%d,%d" % (self.cid1, self.cid2) 
+#~ # unsure how cid remains unique
+#~ #need to read more on how Mike constructed his keys and values
+#~ #need more info on the cids for that.
+    #~ def getdictlinks(self, contig1, contig2=False):
+        #~ try:
+            #~ linkkeys=self.links.keys()
+            #~ if contig2=False:
+                #~ ###Current understanding of key is a string of cid1,2 sep by comma
+                #~ ###Therefore search cid for desired contig name, extract if present
+                #~ return [[key,self.links[key]] for key in linkkeys if contig1 in key]
+            #~ else:
+                #~ return [[key,self.links[key]] for key in linkkeys if contig1 in key and if contig2 in key]
+        #~ except AttributeError:
+            #~ print "Likely that links is not a _dict"
+

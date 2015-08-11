@@ -34,7 +34,6 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 ###############################################################################
 ###############################################################################
-import dataloader
 import scaffold
 ###############################################################################
 '''
@@ -68,14 +67,10 @@ class DataParser(object):
 
     def readCounts(self,contig1,contig2,linksfile=None):
         '''Gets counts for each orientation pair of links'''
-        #Might be able to force proper orientation here.
-        if linksfile==None:
-            linksfile=self.cleanedlinks
-        else:
-            pass
+        linksfile=self.getlinks(contig1,contig2)
         #Changes from needing to maintain relative arrangement
-        tig1ind=linksfile[0].find(contig1)
-        tig2ind=linksfile[0].find(contig2)
+        tig1ind=linksfile[0].index(contig1)
+        tig2ind=linksfile[0].index(contig2)
         #Now maintains appropiate order, if refering to contigs in seperate arrangements
         #This is since index determines if x[4] refers to read of tig 1 or tig 2.
         if tig1ind<tig2ind:
@@ -159,55 +154,94 @@ class DataParser(object):
         for tig in isolated:
             #Add all contigs with no links as individual scaffolds
             #Also remove from both Graph and OrientedGraph
-            Scaffolds["Scaffold"+str(len(Scaffolds))]={tig:[0,0,0,0,0]}
+            Scaffolds["Scaffold"+str(len(Scaffolds))]={tig:[0,0,0,self.gapest(tig),0]}
             Graph.pop(tig,None)
             OrientedGraph.pop(tig,None)
         print Scaffolds
         #Now need to retrieve each scaffold with the order,gapsize,orientation
-        paths=makepaths(Graph,OrientedGraph)
-        return None
+        paths=self.makepathss(Graph,OrientedGraph)
+        #Now unpacks the paths to make scaffolds
+        for path in paths:
+            scafname="Scaffold"+str(len(Scaffolds))
+            Scaffolds[scafname]={}
+            startnode=None
+            prevnode=None
+            curnode=None
+            i=0
+            for node in path:
+                if startnode==None:
+                    startnode=node
+                    curnode=node            
+                else:
+                    prevnode=curnode
+                    curnode=node
+                    Scaffolds[scafname][prevnode]=\
+                        [0,0,0,self.gapest(prevnode,curnode),i]
+                    i+=1
+            finalnode=curnode
+            Scaffolds[scafname][finalnode]=[0,0,0,self.gapest(finalnode),i]
+            
+        for scaf in Scaffolds:
+            scaf1={}
+            scaf1[scaf]=Scaffolds[scaf]
+            self.scaffoldset[scaf]=scaffold.Scaffold(scaf1,scaf)
+        return
 
     
-    def makepaths(self,Graph,OrientedGraph):
-    '''Made with assumption that isolated tigs have been removed'''
+    def makepathss(self,Graph,OrientedGraph):
+        '''Scaffolds are equivalent to paths along the vertices of the graph.
+        Here, scaffoldM uses the vertices to construct paths and returns them.
+        The legality of paths is not checked
+        Made with assumption that isolated tigs have been removed'''
         edges=self.makeedges(Graph)
         badedges={}
-        for edge in edges:
+        #~ for edge in edges:
             #Check orientation, expunge all illegal arrangements
-            swap,flip=arrangenplace(OrientedGraph[edge[0]][edge[1]])
-            if swap and not flip:
-                badedges[(edge[0],edge[1])]=[0]
-            else:
-                pass
-        trueedges=[x for x in edges if x not in badedges.keys()]
+            #~ swap,flip=self.arrangenplace(OrientedGraph[edge[0]][edge[1]])
+            #~ if swap and not flip:
+                #~ badedges[(edge[0],edge[1])]=[]
+            #~ else:
+                #~ pass
+        #~ trueedges=[x for x in edges if x not in badedges.keys()]
         connections={}
-        for edge in trueedges:
-            path[]
-            connections[edge]=[(1,x) if edge[1]==x[0] else (0,x) if edge[0]==x[1] for x in trueedges]
-        for key in connections:
-            paths=[]
-            for edges in connections[key]:
-                if edge[0]==0:
-                    list(key
-                elif edge[1]==1:
-                else:
-                    pass
-    #Is there some way to memoize this
-    def edgejoiner(self,edges):
-        connect2={}
-        for edge in connections:
-                
+        #~ for edge in edges:
+            #~ for x in truedges:
+                #~ if edge[1]==x[0]:
+                    #~ connections[edge]=connections[edge]+[(1,x)]
+                #~ elif edge[0]==x[1]:
+                    #~ connections[edge]=connections[edge]+[(0,x)]
+                #~ else:
+                    #~ pass
+        #
+        paths=self.findpath(Graph) #Makes the paths
+        #Difference between giving graph of nodes and graph of edges
+        if type(paths[0])==tuple:
+            paths=[self.tuplecollapse(x) for x in paths]
+        #Last cleaning check for multiple subpaths - not useful
+        #Processed as possibility later
+        #~ else if type(paths[0])==list:
+            #~ paths=[x for x in paths if not subpath(x,paths)]
+        print paths
+        return paths
+        #~ for key in connections:
+            #~ paths=[]
+            #~ for edges in connections[key]:
+                #~ if edge[0]==0:
+                    #~ list(key
+                #~ elif edge[1]==1:
+                #~ else:
+                    #~ pass
+        #~ return cleanedpaths
+      
     def findpath(self,Graph,verystart=None,start=None,end=None,path=[]):
-    '''Finds all paths connecting points in a graph.'''
+        '''Finds all paths connecting points in a graph.'''
         if start==None: #initialise specific path
             pass
         elif start not in Graph:
             return []
         else:
             path=path+[start]
-            print verystart,start,end,path
         if start==end and start!=None:
-            print 'AM i famous now'
             return [path]
         paths=[]
         if verystart==None:
@@ -219,20 +253,52 @@ class DataParser(object):
                         for pathz in extrapaths:
                             paths.append(pathz)
         else:
-        i=0
+            i=0
             for edge in Graph[end]:
+                #Need extra break conditions to avoid evaluating entire graph
+                #and every subpath in the bigger path
                 if edge not in path:
-            i+=1
-                    print verystart,start,end,edge
+                    i+=1
                     extrapaths=self.findpath(Graph,verystart,end,edge,path)
                     for pathz in extrapaths:
                         paths.append(pathz)
-        if i==0: #End case - no more possible movements
-            extrapaths=self.findpath(Graph,verystart,end,end,path)
-            for pathz in extrapaths:
-                paths.append(pathz)
+            if i==0: #End case - no more possible movements
+                extrapaths=self.findpath(Graph,verystart,end,end,path)
+                for pathz in extrapaths:
+                    paths.append(pathz)
         return paths
-        
+
+    def tuplecollapse(self,tuplist):
+        x=None
+        y=None
+        orientation=0
+        fuser=None
+        for tup in tuplist:
+            y=x
+            x=tup
+            if x==None or y==None:
+                pass
+            elif fuser==None:
+                fuser=self.dubtuple(y,x)
+            else:
+                fuser=self.dubtuple(fuser,x)
+        return fuser
+                
+    def dubtuple(self,tup1,tup2):
+        eletup1=set(tup1)
+        eletup2=set(tup2)
+        if tup1[-1]==tup2[0]:
+            new=tup1+tuple(eletup2-eletup1)
+        elif tup1[-1]==tup2[-1]:
+            new=tup1+tuple(eletup2-eletup1)
+        elif tup1[0]==tup2[0]:
+            new=tuple(eletup2-eletup1)+tup1
+        elif tup1[0]==tup2[-1]:
+            new=tuple(eletup2-eletup1)+tup1
+        else:
+            new=False
+        return new
+
     def rearrange(self,lists,item1,item2):
         '''swap two items in a list'''
         a, b = i.index(item1), i.index(item2)
@@ -245,6 +311,8 @@ class DataParser(object):
         flipplace=False
         flipsequence=False
         or1,or2=linkdirs
+        or1=int(or1)
+        or2=int(or2)
         if or1==1 and or2==0:
             flipplace=True
             flipsequence=False
@@ -308,13 +376,14 @@ class DataParser(object):
         with the processed scaffolds(with gap estimate and proper orientation).
         It will also call all of the scaffolds to print to the scaffold file.'''
         self.cleanlinks() #Cleans the obviously erroneous mappings
-        self.makegraph() #Makes initial connections with no.reads>threshold
-        #self.makescaffolds() #Makes set of scaffolds
-        #self.printscaffolds()
-    def printscaffold(self,filename='testScaffold'):
+        OrientedGraph,Graph=self.makegraph() #Makes initial connections with no.reads>threshold
+        
+        self.makescaffolds(Graph,OrientedGraph) #Makes set of scaffolds
+        self.printscaffolds()
+    def printscaffolds(self,filename='testScaffold'):
         try:
             for key in self.scaffoldset:
-                scaffoldset[key].printscaffold('testScaffold')
+                self.scaffoldset[key].printscaffold('testScaffold')
         except AttributeError:
             print 'These scaffolds do not appear to be the scaffold class'
         
@@ -345,9 +414,7 @@ class DataParser(object):
         return edges
         
     def makepaths(self,graph):
-        '''Scaffolds are equivalent to paths along the vertices of the graph.
-        Here, scaffoldM uses the vertices to construct paths and returns them.
-        The legality of paths is not checked'''
+
         vertices=makeedges(graph)
         
     def lonetigs(self,graph):
@@ -368,14 +435,6 @@ class DataParser(object):
         pairing
         '''
         return None
-
-
-
-    def algorithm(stuff):
-    # calls all the graph functions to go from start to finish in constructing the scaffolds
-    #Will return the dictionary of scaffolds suitable for scaffold class - or
-    #Do final step in here as well - make dictionary of Scaffolds objects
-        return
 
     def gapest(self,contig1=False,contig2=False):
     #implementation of sahlini et al 2013 algorithm.

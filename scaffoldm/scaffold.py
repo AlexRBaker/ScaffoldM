@@ -127,11 +127,11 @@ class Scaffold(object):
         '''
         ##Can then optionally choose 
         #to write all to one file or one for each scaffodl
+        scaffoldname=self.name
         if filename==None:
             filename=scaffoldname+".fasta"
         else:
             pass
-        scaffoldname=self.name
         ##First check if file exists
         contigloc=self.contigloc
         gapsize=3 #Index for gap between contigs
@@ -167,7 +167,6 @@ class Scaffold(object):
                         scaffile.write(modseq[:(linesize-offset)]+"\n")
                     for segment in self.chunker(ContigSeq[(linesize-offset):],linesize,"\n"):
                         scaffile.write(segment)
-                    print "Could it be here, a bug is hiding"
                 else:
                     #Now - extra line break in newfile after header
                     scaffile.seek(0,2)
