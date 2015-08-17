@@ -36,13 +36,12 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 import scaffold
 ###############################################################################
-'''
-Class which does all the precalculations needed for giving input to
-both the gapestimator and the scaffolding algorithm
 
-
-'''
 class DataParser(object):
+    '''
+    Class which does all the precalculations needed for giving input to
+    both the gapestimator and the scaffolding algorithm
+    '''
     def __init__(self,
                  links,
                  coverages,
@@ -80,6 +79,8 @@ class DataParser(object):
             norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
             rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
         else:
+            norm=0
+            rev=0
             print "How is this possible?"
         posinvc2=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='1')])
         posinvc1=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='0')])
@@ -142,8 +143,9 @@ class DataParser(object):
                         if self.linkorientation(i)!=None:
                             OrientedGraph[contig1][contig2]=[self.linkorientation(i)]
                     Graph[contig1]=Graph[contig1]+[contig2]
-        print Graph
-        print OrientedGraph
+        #print Graph
+        #print self.makeedges(Graph)
+        #print OrientedGraph
         return [OrientedGraph,Graph]
 
     def makescaffolds(self,Graph,OrientedGraph):
@@ -180,7 +182,6 @@ class DataParser(object):
                     i+=1
             finalnode=curnode
             Scaffolds[scafname][finalnode]=[0,0,0,self.gapest(finalnode),i]
-            
         for scaf in Scaffolds:
             scaf1={}
             scaf1[scaf]=Scaffolds[scaf]
@@ -194,85 +195,149 @@ class DataParser(object):
         The legality of paths is not checked
         Made with assumption that isolated tigs have been removed'''
         edges=self.makeedges(Graph)
+        #Nedges=self.edgestograph(edges)
         badedges={}
-        #~ for edge in edges:
-            #Check orientation, expunge all illegal arrangements
-            #~ swap,flip=self.arrangenplace(OrientedGraph[edge[0]][edge[1]])
-            #~ if swap and not flip:
-                #~ badedges[(edge[0],edge[1])]=[]
-            #~ else:
-                #~ pass
-        #~ trueedges=[x for x in edges if x not in badedges.keys()]
         connections={}
-        #~ for edge in edges:
-            #~ for x in truedges:
-                #~ if edge[1]==x[0]:
-                    #~ connections[edge]=connections[edge]+[(1,x)]
-                #~ elif edge[0]==x[1]:
-                    #~ connections[edge]=connections[edge]+[(0,x)]
-                #~ else:
-                    #~ pass
-        #
-        paths=self.findpath(Graph) #Makes the paths
-        #Difference between giving graph of nodes and graph of edges
-        if type(paths[0])==tuple:
-            paths=[self.tuplecollapse(x) for x in paths]
-        #Last cleaning check for multiple subpaths - not useful
-        #Processed as possibility later
-        #~ else if type(paths[0])==list:
-            #~ paths=[x for x in paths if not subpath(x,paths)]
+        paths=self.findpath(edges) #Makes the paths
+        if type(paths[0])==list:
+            paths=[self.tuplecollapse(x) for x in paths if x!=None]
         print paths
         return paths
-        #~ for key in connections:
-            #~ paths=[]
-            #~ for edges in connections[key]:
-                #~ if edge[0]==0:
-                    #~ list(key
-                #~ elif edge[1]==1:
-                #~ else:
-                    #~ pass
-        #~ return cleanedpaths
-      
-    def findpath(self,Graph,verystart=None,start=None,end=None,path=[]):
-        '''Finds all paths connecting points in a graph.'''
-        if start==None: #initialise specific path
-            pass
-        elif start not in Graph:
-            return []
-        else:
-            path=path+[start]
-        if start==end and start!=None:
-            return [path]
+        
+    def edgestograph(self,edges):
+        Graph={}
+        for edge in edges:
+            Graph[edge]=[]
+            for edge2 in edges:
+                if edge2==edge:
+                    pass
+                elif edge2[1] in edge or edge2[0] in edge:
+                    Graph[edge]=Graph[edge]+[edge2]
+                else:
+                    pass
+        return Graph
+        
+    def findpath(self,Graph):
+        '''Keeps extending path until no more possible edges'''
         paths=[]
-        if verystart==None:
-            for key in Graph:
-                for edge in Graph[key]:
-                    if edge not in path:
-                        print edge
-                        extrapaths=self.findpath(Graph,key,key,edge,path)
-                        for pathz in extrapaths:
-                            paths.append(pathz)
-        else:
-            i=0
-            for edge in Graph[end]:
-                #Need extra break conditions to avoid evaluating entire graph
-                #and every subpath in the bigger path
-                if edge not in path:
-                    i+=1
-                    extrapaths=self.findpath(Graph,verystart,end,edge,path)
-                    for pathz in extrapaths:
-                        paths.append(pathz)
-            if i==0: #End case - no more possible movements
-                extrapaths=self.findpath(Graph,verystart,end,end,path)
-                for pathz in extrapaths:
-                    paths.append(pathz)
+        doneedges=set([])
+        for edge in Graph:
+            path=[edge]
+            path1=path
+            done=False
+            if edge not in doneedges:
+                doneedges|=set([edge])
+                doneedges|=set([edge[::-1]])
+                if len(path)==1:
+                    counts=self.readCounts(edge[0],edge[1])
+                    index=counts.index(max(counts))
+                    orientation=self.linkorientation(index)
+                    if orientation==(1,0):
+                        path[0]=(path[0][1],path[0][0])
+                while not done:
+                    #print path
+                    #frontedge=[x for x in Graph[path[-1]] if path[-1][1]==x[0] and (x not in doneedges)]
+                    frontedge=[x for x in Graph if path[-1][1]==x[0] and (x not in doneedges) and (x[::-1] not in doneedges) and x[::-1]!=path[-1]]
+                    #print frontedge
+                    #backedge=[x for x in Graph[path[0]] if path[0][0]==x[1] and (x not in doneedges)]
+                    backedge=[x for x in Graph if path[0][0]==x[1] and (x not in doneedges) and (x[::-1] not in doneedges) and x[::-1]!=path[0]]
+                    #print backedge
+                    newfront=self.joinedges(path,frontedge,front=True)
+                    newback=self.joinedges(path,backedge,front=False)
+                    if newback!=None and newfront!=None:
+                        path=[newback]+path+[newfront]
+                        doneedges=doneedges | set([newback])| set([newfront])
+                        doneedges=doneedges | set([newback[::-1]]) | set([newfront[::-1]])
+                    elif newback!=None:
+                        path=[newback]+path
+                        doneedges=doneedges | set([newback])
+                        doneedges=doneedges | set([newback[::-1]])
+                    elif newfront!=None:
+                        path=path+[newfront]
+                        doneedges=doneedges | set([newfront])
+                        doneedges=doneedges | set([newfront[::-1]])
+                    else:
+                        done=True
+                
+                paths.append(path)
+        #print paths
         return paths
+
+    def joinedges(self,path,posedges=[],threshold=0.8,front=False):
+        '''Includes sspace-like decision for joining edges.
+        Takes a path containing ordered edges and decides which, if any,
+        of the possible edges should be joined tot the path'''
+        newedge=None
+        #best can =1 since earlier threshold for edges was 5
+        maxcounts=[]
+        best=0
+        print posedges
+        if posedges==[]:
+            return None
+        #Need to add check against those reads in the path
+        for edge in posedges:
+            if front:
+                counts=self.readCounts(path[-1][0],edge[0])
+                ori=self.linkorientation(counts.index(max(counts)))
+            elif front==False:
+                counts=self.readCounts(edge[0],path[0][0])
+                ori=self.linkorientation(counts.index(max(counts)))
+            else:
+                pass
+            if (front and ori==(0,1)) or (front==False and ori==(1,0)):
+                maxcounts.append((max(counts),edge))
+        #maxcounts.append((max(self.readCounts(path,edge),
+        best=max(max(maxcounts),best)
+        if type(best)!=tuple:
+            return None
+        for count,tup in maxcounts:
+            if best[0]==0:
+                return None
+            elif float(count)/best[0]>threshold and (count,tup)!=best:
+                return None
+        return best[1]
+    #~ def findpath(self,Graph,verystart=None,start=None,end=None,path=[]):
+        #~ '''Finds all paths connecting points in a graph.'''
+        #~ if start==None: #initialise specific path
+            #~ pass
+        #~ elif start not in Graph:
+            #~ return []
+        #~ else:
+            #~ path=path+[start]
+        #~ if start==end and start!=None:
+            #~ return [path]
+        #~ paths=[]
+        #~ if verystart==None:
+            #~ for key in Graph:
+                #~ for edge in Graph[key]:
+                    #~ if edge not in path:
+                        #~ print edge
+                        #~ extrapaths=self.findpath(Graph,key,key,edge,path)
+                        #~ for pathz in extrapaths:
+                            #~ paths.append(pathz)
+        #~ else:
+            #~ i=0
+            #~ for edge in Graph[end]:
+                #~ #Need extra break conditions to avoid evaluating entire graph
+                #~ #and every subpath in the bigger path
+                #~ if edge not in path:
+                    #~ i+=1
+                    #~ extrapaths=self.findpath(Graph,verystart,end,edge,path)
+                    #~ for pathz in extrapaths:
+                        #~ paths.append(pathz)
+            #~ if i==0: #End case - no more possible movements
+                #~ extrapaths=self.findpath(Graph,verystart,end,end,path)
+                #~ for pathz in extrapaths:
+                    #~ paths.append(pathz)
+        #~ return paths
 
     def tuplecollapse(self,tuplist):
         x=None
         y=None
         orientation=0
         fuser=None
+        if len (tuplist)==1:
+            return tuplist[0]
         for tup in tuplist:
             y=x
             x=tup
@@ -369,7 +434,7 @@ class DataParser(object):
         self.cleanedlinks=cleanedlinks
         self.mean=meaninsert
         self.std=stdinsert
-        return
+        return (meaninsert,stdinsert)
         
     def parse(self):
         '''links all functions to start from the DataParser input and to end
@@ -409,13 +474,9 @@ class DataParser(object):
         edges=[]
         for key in graph:
             for point in graph[key]:
-                if (point,key) not in edges and (key,point):
+                if (key,point) not in edges:
                     edges.append((key,point))
         return edges
-        
-    def makepaths(self,graph):
-
-        vertices=makeedges(graph)
         
     def lonetigs(self,graph):
         '''Identifies all contigs which are not linked
@@ -428,15 +489,7 @@ class DataParser(object):
                 pass
         return singletigs
 
-
-    def collapse(self,graph,cutoff):
-        ''' Using the sspace-like decision process to simply the graph.
-        This result in the remove of certain paths where contigs had more than 1
-        pairing
-        '''
-        return None
-
-    def gapest(self,contig1=False,contig2=False):
+    def gapest(self,contig1=False,contig2=False,cleanedlinks):
     #implementation of sahlini et al 2013 algorithm.
         import os
         import sys
@@ -444,10 +497,89 @@ class DataParser(object):
         from scipy.stats import norm
         from scipy.constants import pi
         from math import exp
-        
+        from scaffold import Scaffold
+        import random
+        ##Given sufficiently large contigs then
+        ##Can use binary search on the g(d) function to find 
+        ##THe ML estimate
+        #Data
+        observations=fsomething(cleanedlinks)
+        nullscaf=Scaffold({},'Null',contigloc)
+        c1=len(nullscaf.extractcontigs(contig,contigloc,header=False).translate(None,'\n'))#length of contig 1
+        c2=len(nullscaf.extractcontigs(contig,contigloc,header=False).translate(None,'\n'))#Length of contig 2
+        cmin=min(c1,c2) #Minimum length
+        cmax=max(c1,c2) #Maximum length
+        r=self.readLen #read length
+        sigma= #sd of insert library
+        mu= #Mean of insert library
+        l=10 #smallest correct gap expected to see
         if contig2==False:
-            return 0
+            distance=0
         else:
-            #Stuff happens
-            pass
-        return 200
+            #Stuff hapdpens
+            distance=self.MLsearch(c1,c2,cmin,cmax,r,sigma,mu,l,searchlow,searchhigh)
+        return distance
+
+    #~ def gofd(cmin,cmax,r,d,mu,sigma):
+        #~ #Couldn't resolve difference between my and Sahlin's implementation - did they make further steps from paper?
+        #~ #Some differences didn't match paper - check later
+        #~ # The g (d) function from Sahlin et al 2013. This function
+        #~ #
+        #~ c_min=cmin
+        #~ c_max=cmax
+        #~ readLen=r
+        #~ mean=mu
+        #~ stdDev=sigma
+        #~ # Terms are grouped by brackets in Sahlin et al. 2013
+        #~ Term1=((c_min-readLen+1)/2.0)*(erf((c_max+d+readLen-mean)/(2**0.5*stdDev))-erf((c_min+d+readLen-mean)/(2**0.5*stdDev)))
+        #~ Term2=((cmin+cmax+d+1-mean)/2.0)*(erf((cmin+cmax+d+1-mean)/(2**0.5*stdDev))-erf((c_max+d+readLen-mean)/(2**0.5*stdDev)))
+        #~ Term3=((d+2*readLen-1-mean)/2.0)*(erf((d+2*readLen-1-mean)/(2**0.5*stdDev))-erf((c_min+d+readLen-mean)/(2**0.5*stdDev)))
+        #~ Term4=(stdDev/((2*pi)**0.5))*(exp(-(cmax+cmin+d+1-mean)**2/(2*float(stdDev**2)))+exp(-(d+2*readLen-1-mean)**2/(2*float(stdDev**2)))-exp(-(c_max+d+readLen-mean)**2/(2*float(stdDev**2)))-exp(-(c_max+d+readLen-mean)**2/(2*float(stdDev**2))))
+        #~ denom=Term1+Term2+Term3+Term4
+        #~ return denom
+    ##Estimator functions from below are almost exact replicates of those seen in GapCalculator.py as
+    ##Released by Sahlin et al 2014 on https://github.com/GapEst
+    def Denominator(self,d,c_min,c_max,readLen,mean,stdDev):
+        #term 1,2 and 3 denodes what part of the function we are integrating term1 for first (ascending), etc...
+        term2=(c_min-readLen+1)/2.0*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))- erf((c_min+d+readLen-mean)/((2**0.5)*stdDev))   )
+
+        first=-((pi/2)**0.5)*(d+2*readLen-mean-1)*( erf((c_min+d+readLen-mean)/(2**0.5*float(stdDev))) - erf((d+2*readLen-1-mean)/(2**0.5*float(stdDev)))  )
+        second=stdDev*( exp(-( (d+2*readLen-1-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_min+d+readLen-mean)**2)/(float(2*stdDev**2)))) 
+        term1=first+second
+
+        first=((pi/2)**0.5)*(c_min+c_max+d-mean+1)*( erf((c_min+c_max+d-mean)/(2**0.5*float(stdDev))) - erf((c_max+readLen+d-mean)/(2**0.5*float(stdDev)))  )
+        #print 'First: ',first
+        second=stdDev*( exp(-( (c_min+c_max+d-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_max+readLen+d-mean)**2)/(float(2*stdDev**2))))
+        #print 'Second: ',second
+        term3=first+second
+        denom=term1+term2+term3
+        #print term1,term2,term3
+        return denom
+
+    def gprimed(self,cmin,cmax,r,d,mu,sigma):
+        #Straight from GapCalculator.py in Sahlin et al's code - rename
+        num1=( erf((cmin+cmax+d+1-mu)/(2**0.5*float(sigma))) +erf((mu-d-cmax-r-1)/(2**0.5*float(sigma))))*(pi/2)**0.5
+        num2=-(erf((cmin+d+r+1-mu)/(2**0.5*float(sigma)))+erf((mu-d-2*r+1)/(2**0.5*float(sigma))))*(pi/2)**0.5
+        num=num1+num2 #Complete g prime
+        return num
+        
+    def fd(self,cmin,cmax,r,d,mu,sigma):
+        numer=self.gprimed(cmin,cmax,r,d,mu,sigma(
+        denom=self.Denominator(d,cmin,cmax,r,mu,sigma)
+        fofd=d+numer/denom*sigma**2
+        return fofd
+        
+    def MLsearch(d,cmin,cmax,r,mu,sigma,observations):
+        noLinks=len(observations)
+        obsval=(noLinks*mu-sum(observations))/float(noLinks)
+        dlower=max(-l,mu-c1-c2-m*sigma+2*r)
+        dupper=mu+m*sigma+2*r
+        while dupper-dlower>1:
+            d_ML=(d_upper+d_lower)/2.0
+            f_d=self.fd(cmin,cmax,r,d,mu,sigma)
+            if f_d>obsval:
+                d_upper=d_ML
+            else:
+                d_lower=d_ML
+        Gapsize=int(round((d_upper+d_lower)/2.0,0))
+        return Gapsize

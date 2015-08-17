@@ -204,3 +204,8 @@ class Scaffold(object):
         except TypeError:
             print "end must be concatenable to string, \
             intended use is type(str) for both"
+            
+    def loadtigsequence(self, contig1):
+        return
+    def loadscafsequence(self):
+        return 

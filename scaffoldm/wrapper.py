@@ -97,3 +97,4 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
                             data.bamnames,
                             data.contigNames)
     parser.parse()
+    #parser.visualise()
