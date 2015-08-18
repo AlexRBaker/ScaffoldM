@@ -47,7 +47,8 @@ class DataParser(object):
                  coverages,
                  inserts,
                  bamnames,
-                 contignames):
+                 contignames,
+                 contigloc):
         ###DataParser - takes data from DataLoader instance
         ###Process - scrub completely unrealistic links (Huge insert for library)
         ###Get dictionary of contig and possibly links
@@ -63,9 +64,13 @@ class DataParser(object):
         self.bamnames=bamnames
         self.contignames=contignames
         self.scaffoldset={}
+        self.contigloc=contigloc
+        self.readlen=100
 
     def readCounts(self,contig1,contig2,linksfile=None):
-        '''Gets counts for each orientation pair of links'''
+        '''Gets the number of links between two contigs
+        in each of 4 orientations, (0,1),(1,0),(1,1),(0,0)
+        Here 0 is a read in the same direction as the contig'''
         linksfile=self.getlinks(contig1,contig2)
         #Changes from needing to maintain relative arrangement
         tig1ind=linksfile[0].index(contig1)
@@ -88,6 +93,8 @@ class DataParser(object):
         return [norm,rev,posinvc2,posinvc1,total]
         
     def getlinks(self,contig1,contig2=False,linksfile=None):
+        '''Retrieves every link entry for one contig for every link 
+        between two contigs'''
         if linksfile==None:
             linksfile=self.links
         try:
@@ -103,6 +110,9 @@ class DataParser(object):
             print "Contig1 must be string, contig2 can be ither False or a string"
             
     def checklinks(self,contig1,linksfile=None):
+        '''Checks all contigs linked to the specified contig
+        and return a list of these contigs.
+        '''
         if linksfile==None:
             linksfile=self.cleanedlinks
         links=self.getlinks(contig1,False,linksfile)
@@ -111,6 +121,8 @@ class DataParser(object):
         return list(nottig1|notcontig1)
 
     def completecheck(self,cleanedlinks=None):
+        '''Uses CheckLinks to Construct all a dictionary with a key for each contigs
+        which contains all contigs to which they are linked.'''
         if cleanedlinks==None:
             cleanedlinks=self.cleanedlinks
         connections={}
@@ -205,6 +217,7 @@ class DataParser(object):
         return paths
         
     def edgestograph(self,edges):
+        '''Creates a graph of each edge which access all linked edges'''
         Graph={}
         for edge in edges:
             Graph[edge]=[]
@@ -219,29 +232,23 @@ class DataParser(object):
         
     def findpath(self,Graph):
         '''Keeps extending path until no more possible edges'''
-        paths=[]
+        paths=[] #The current path being considered
         doneedges=set([])
         for edge in Graph:
             path=[edge]
-            path1=path
             done=False
             if edge not in doneedges:
                 doneedges|=set([edge])
                 doneedges|=set([edge[::-1]])
-                if len(path)==1:
+                if len(path)==1: #Force a orientation consideration on starting pair
                     counts=self.readCounts(edge[0],edge[1])
                     index=counts.index(max(counts))
                     orientation=self.linkorientation(index)
                     if orientation==(1,0):
-                        path[0]=(path[0][1],path[0][0])
-                while not done:
-                    #print path
-                    #frontedge=[x for x in Graph[path[-1]] if path[-1][1]==x[0] and (x not in doneedges)]
-                    frontedge=[x for x in Graph if path[-1][1]==x[0] and (x not in doneedges) and (x[::-1] not in doneedges) and x[::-1]!=path[-1]]
-                    #print frontedge
-                    #backedge=[x for x in Graph[path[0]] if path[0][0]==x[1] and (x not in doneedges)]
-                    backedge=[x for x in Graph if path[0][0]==x[1] and (x not in doneedges) and (x[::-1] not in doneedges) and x[::-1]!=path[0]]
-                    #print backedge
+                        path[0]=path[0][::-1] #Flips tuples
+                while not done: #Extend the path
+                    frontedge=[x for x in Graph if path[-1][1]==x[0] and (x not in doneedges) and (x[::-1] not in doneedges) ]#and x[::-1]!=path[-1]
+                    backedge=[x for x in Graph if path[0][0]==x[1] and (x not in doneedges) and (x[::-1] not in doneedges) ]#and x[::-1]!=path[0]
                     newfront=self.joinedges(path,frontedge,front=True)
                     newback=self.joinedges(path,backedge,front=False)
                     if newback!=None and newfront!=None:
@@ -272,7 +279,8 @@ class DataParser(object):
         maxcounts=[]
         best=0
         print posedges
-        if posedges==[]:
+        if posedges==[]: ##Consider if there were no possible edges
+            print path,"This is the Path"
             return None
         #Need to add check against those reads in the path
         for edge in posedges:
@@ -280,56 +288,23 @@ class DataParser(object):
                 counts=self.readCounts(path[-1][0],edge[0])
                 ori=self.linkorientation(counts.index(max(counts)))
             elif front==False:
-                counts=self.readCounts(edge[0],path[0][0])
+                counts=self.readCounts(edge[0],path[0][0]) #Reorder ensures orientation for later
                 ori=self.linkorientation(counts.index(max(counts)))
             else:
                 pass
-            if (front and ori==(0,1)) or (front==False and ori==(1,0)):
+            if (front and ori==(0,1)) or (front==False and ori==(0,1)):
                 maxcounts.append((max(counts),edge))
         #maxcounts.append((max(self.readCounts(path,edge),
-        best=max(max(maxcounts),best)
+        if maxcounts!=[]:
+            best=max(maxcounts)
         if type(best)!=tuple:
+            print path,"This is the Path for typeerror"
             return None
         for count,tup in maxcounts:
-            if best[0]==0:
-                return None
-            elif float(count)/best[0]>threshold and (count,tup)!=best:
+            if float(count)/best[0]>threshold and (count,tup)!=best:
+                print path,"This is the Path for too many competing options"
                 return None
         return best[1]
-    #~ def findpath(self,Graph,verystart=None,start=None,end=None,path=[]):
-        #~ '''Finds all paths connecting points in a graph.'''
-        #~ if start==None: #initialise specific path
-            #~ pass
-        #~ elif start not in Graph:
-            #~ return []
-        #~ else:
-            #~ path=path+[start]
-        #~ if start==end and start!=None:
-            #~ return [path]
-        #~ paths=[]
-        #~ if verystart==None:
-            #~ for key in Graph:
-                #~ for edge in Graph[key]:
-                    #~ if edge not in path:
-                        #~ print edge
-                        #~ extrapaths=self.findpath(Graph,key,key,edge,path)
-                        #~ for pathz in extrapaths:
-                            #~ paths.append(pathz)
-        #~ else:
-            #~ i=0
-            #~ for edge in Graph[end]:
-                #~ #Need extra break conditions to avoid evaluating entire graph
-                #~ #and every subpath in the bigger path
-                #~ if edge not in path:
-                    #~ i+=1
-                    #~ extrapaths=self.findpath(Graph,verystart,end,edge,path)
-                    #~ for pathz in extrapaths:
-                        #~ paths.append(pathz)
-            #~ if i==0: #End case - no more possible movements
-                #~ extrapaths=self.findpath(Graph,verystart,end,end,path)
-                #~ for pathz in extrapaths:
-                    #~ paths.append(pathz)
-        #~ return paths
 
     def tuplecollapse(self,tuplist):
         x=None
@@ -445,15 +420,15 @@ class DataParser(object):
         
         self.makescaffolds(Graph,OrientedGraph) #Makes set of scaffolds
         self.printscaffolds()
+
     def printscaffolds(self,filename='testScaffold'):
         try:
             for key in self.scaffoldset:
-                self.scaffoldset[key].printscaffold('testScaffold')
+                self.scaffoldset[key].printscaffold(filename+".fasta")
         except AttributeError:
             print 'These scaffolds do not appear to be the scaffold class'
-        
-        
         return
+
     def lowerdist(self,onelink):
         '''severe lower bound on gap between
          reads (ignores gap between contigs)'''
@@ -489,7 +464,13 @@ class DataParser(object):
                 pass
         return singletigs
 
-    def gapest(self,contig1=False,contig2=False,cleanedlinks):
+    def gapest(self,contig1=False,contig2=False,cleanedlinks=None,bamnames=None,default=False):
+        if cleanedlinks==None:
+            cleanedlinks=self.cleanedlinks
+        if bamnames==None:
+            bamnames=self.bamnames
+        if default:
+            return 200
     #implementation of sahlini et al 2013 algorithm.
         import os
         import sys
@@ -498,48 +479,68 @@ class DataParser(object):
         from scipy.constants import pi
         from math import exp
         from scaffold import Scaffold
-        import random
         ##Given sufficiently large contigs then
         ##Can use binary search on the g(d) function to find 
         ##THe ML estimate
         #Data
-        observations=fsomething(cleanedlinks)
-        nullscaf=Scaffold({},'Null',contigloc)
-        c1=len(nullscaf.extractcontigs(contig,contigloc,header=False).translate(None,'\n'))#length of contig 1
-        c2=len(nullscaf.extractcontigs(contig,contigloc,header=False).translate(None,'\n'))#Length of contig 2
-        cmin=min(c1,c2) #Minimum length
-        cmax=max(c1,c2) #Maximum length
-        r=self.readLen #read length
-        sigma= #sd of insert library
-        mu= #Mean of insert library
+        #observations=fsomething(cleanedlinks)
+        nullscaf=Scaffold({},'Null',self.contigloc)
+        meaninsert={}
+        stdinsert={}
+        for name in bamnames:
+            #Should give unique insert mean and insert std
+            meaninsert[name]=[x[1] for x in self.inserts if name+".bam" in x]
+            stdinsert[name]=[x[2] for x in self.inserts if name+".bam" in x]
+        observations=[self.lowerdist(x) for x in cleanedlinks if (contig1 in x) and (contig2 in x)]
+        #print observations
+        r=self.readlen #read length
+        m=3 #Arbitrary tolerance level
+        sigma=[float(stdinsert[x][0]) for x in stdinsert] #sd of insert library
+        mu=[float(meaninsert[x][0]) for x in meaninsert]#Mean of insert library
         l=10 #smallest correct gap expected to see
+        if contig1!=False and contig2!=False:
+            c1=len(nullscaf.extractcontigs(contig1,self.contigloc,header=False).translate(None,'\n'))#length of contig 1
+            c2=len(nullscaf.extractcontigs(contig2,self.contigloc,header=False).translate(None,'\n'))#Length of contig 2
+            cmin=min(c1,c2) #Minimum length
+            cmax=max(c1,c2) #Maximum length
+            if len(observations)==0:
+                print "There has been an error"
+                return 1
+            distance=self.MLsearch(cmin,cmax,r,mu[0],sigma[0],observations)
+            print "Tig 1:",contig1,"Tig2",contig2
+            print "The ML distance is {0}".format(distance)
         if contig2==False:
             distance=0
-        else:
-            #Stuff hapdpens
-            distance=self.MLsearch(c1,c2,cmin,cmax,r,sigma,mu,l,searchlow,searchhigh)
         return distance
 
-    #~ def gofd(cmin,cmax,r,d,mu,sigma):
+    #~ def gofd(self,d,cmin,cmax,r,mu,sigma):
         #~ #Couldn't resolve difference between my and Sahlin's implementation - did they make further steps from paper?
         #~ #Some differences didn't match paper - check later
         #~ # The g (d) function from Sahlin et al 2013. This function
-        #~ #
+        #~ from scipy.special import erf
+        #~ from scipy.stats import norm
+        #~ from scipy.constants import pi
+        #~ from math import exp
         #~ c_min=cmin
         #~ c_max=cmax
         #~ readLen=r
         #~ mean=mu
         #~ stdDev=sigma
         #~ # Terms are grouped by brackets in Sahlin et al. 2013
-        #~ Term1=((c_min-readLen+1)/2.0)*(erf((c_max+d+readLen-mean)/(2**0.5*stdDev))-erf((c_min+d+readLen-mean)/(2**0.5*stdDev)))
-        #~ Term2=((cmin+cmax+d+1-mean)/2.0)*(erf((cmin+cmax+d+1-mean)/(2**0.5*stdDev))-erf((c_max+d+readLen-mean)/(2**0.5*stdDev)))
-        #~ Term3=((d+2*readLen-1-mean)/2.0)*(erf((d+2*readLen-1-mean)/(2**0.5*stdDev))-erf((c_min+d+readLen-mean)/(2**0.5*stdDev)))
-        #~ Term4=(stdDev/((2*pi)**0.5))*(exp(-(cmax+cmin+d+1-mean)**2/(2*float(stdDev**2)))+exp(-(d+2*readLen-1-mean)**2/(2*float(stdDev**2)))-exp(-(c_max+d+readLen-mean)**2/(2*float(stdDev**2)))-exp(-(c_max+d+readLen-mean)**2/(2*float(stdDev**2))))
+        #~ Term1=((c_min-readLen+1)/2.0)*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))-erf((c_min+d+readLen-mean)/((2**0.5)*stdDev)))
+        #~ Term2=((c_min+c_max+d+1-mean)/2.0)*(erf((c_min+c_max+d+1-mean)/((2**0.5)*stdDev))-erf((c_max+d+readLen-mean)/((2**0.5)*stdDev)))
+        #~ Term3=((d+2*readLen-1-mean)/2.0)*(erf((d+2*readLen-1-mean)/((2**0.5)*stdDev))-erf((c_min+d+readLen-mean)/((2**0.5)*stdDev)))
+        #~ Term4=(stdDev/((2*pi)**0.5))*(exp(-(cmax+cmin+d+1-mean)**2/(2*float(stdDev**2)))+exp(-(d+2*readLen-1-mean)**2/(2*float(stdDev**2)))-exp(-(c_max+d+readLen-mean)**2/(2*float(stdDev**2)))-exp(-(c_min+d+readLen-mean)**2/(2*float(stdDev**2))))
         #~ denom=Term1+Term2+Term3+Term4
+        #~ print denom, "Denominator"
         #~ return denom
     ##Estimator functions from below are almost exact replicates of those seen in GapCalculator.py as
     ##Released by Sahlin et al 2014 on https://github.com/GapEst
     def Denominator(self,d,c_min,c_max,readLen,mean,stdDev):
+        from scipy.special import erf
+        from scipy.stats import norm
+        from scipy.constants import pi
+        from math import exp
         #term 1,2 and 3 denodes what part of the function we are integrating term1 for first (ascending), etc...
         term2=(c_min-readLen+1)/2.0*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))- erf((c_min+d+readLen-mean)/((2**0.5)*stdDev))   )
 
@@ -553,30 +554,49 @@ class DataParser(object):
         #print 'Second: ',second
         term3=first+second
         denom=term1+term2+term3
+        #print denom, "Denominator"
         #print term1,term2,term3
         return denom
 
     def gprimed(self,cmin,cmax,r,d,mu,sigma):
+        from scipy.special import erf
+        from scipy.stats import norm
+        from scipy.constants import pi
+        from math import exp
         #Straight from GapCalculator.py in Sahlin et al's code - rename
-        num1=( erf((cmin+cmax+d+1-mu)/(2**0.5*float(sigma))) +erf((mu-d-cmax-r-1)/(2**0.5*float(sigma))))*(pi/2)**0.5
-        num2=-(erf((cmin+d+r+1-mu)/(2**0.5*float(sigma)))+erf((mu-d-2*r+1)/(2**0.5*float(sigma))))*(pi/2)**0.5
+        #num1=( erf((cmin+cmax+d+1-mu)/(2**0.5*float(sigma))) +erf((mu-d-cmax-r-1)/(2**0.5*float(sigma))))*(pi/2)**0.5
+        #num2=-(erf((cmin+d+r+1-mu)/(2**0.5*float(sigma)))+erf((mu-d-2*r+1)/(2**0.5*float(sigma))))*(pi/2)**0.5
+        num1=1/2.0*(erf((cmin+cmax+d+1-mu)/float(2**0.5*sigma))+erf((d+2*r-1-mu)/(2**0.5*float(sigma))))
+        num2=-1/2.0*(erf((cmax+d+r-mu)/(2**0.5*sigma))+erf((cmin+d+r-mu)/(2**0.5*pi)))
         num=num1+num2 #Complete g prime
         return num
         
     def fd(self,cmin,cmax,r,d,mu,sigma):
-        numer=self.gprimed(cmin,cmax,r,d,mu,sigma(
+        numer=self.gprimed(cmin,cmax,r,d,mu,sigma)
         denom=self.Denominator(d,cmin,cmax,r,mu,sigma)
-        fofd=d+numer/denom*sigma**2
+        #~ denom=self.gofd(d,cmin,cmax,r,mu,sigma)
+        fofd=d+(numer/float(denom))*sigma**2
         return fofd
         
-    def MLsearch(d,cmin,cmax,r,mu,sigma,observations):
+    def MLsearch(self,cmin,cmax,r,mu,sigma,observations,m=3):
         noLinks=len(observations)
+        #~ print observations
+        #~ print noLinks
+        #~ print mu
+        l=10
+        #Heuristics cut off from Sahlin et al.
+        #mean of 10 largest - mean of 10 smallest <6*stdDev
+        #At least 10 links mapping
+        # 
         obsval=(noLinks*mu-sum(observations))/float(noLinks)
-        dlower=max(-l,mu-c1-c2-m*sigma+2*r)
-        dupper=mu+m*sigma+2*r
-        while dupper-dlower>1:
+        d_lower=max(-l,mu-cmin-cmax-m*sigma+2*r)
+        d_upper=mu+m*sigma+2*r
+        #Can do a binary search since f_d should be monotically increasing
+        #As mentioned by Sahlin et al.
+        while d_upper-d_lower>1:
             d_ML=(d_upper+d_lower)/2.0
-            f_d=self.fd(cmin,cmax,r,d,mu,sigma)
+            #print d_ML
+            f_d=self.fd(cmin,cmax,r,d_ML,mu,sigma)
             if f_d>obsval:
                 d_upper=d_ML
             else:

@@ -95,6 +95,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
                             data.coverages,
                             data.inserts,
                             data.bamnames,
-                            data.contigNames)
+                            data.contigNames,
+                            data.contigloc)
     parser.parse()
     #parser.visualise()

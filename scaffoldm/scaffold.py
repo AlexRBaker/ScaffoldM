@@ -60,8 +60,11 @@ class Scaffold(object):
         self.scaffold=scaffold
         self.name=scaffoldname
         OrderInScaffold=4 #Ind contig place in scaffold
-        self.contigNames=[item[0] for item in sorted(self.scaffold[scaffoldname].items(),\
-        key=lambda input:input[1][OrderInScaffold])]
+        if scaffold!={}:
+            self.contigNames=[item[0] for item in sorted(self.scaffold[scaffoldname].items(),\
+            key=lambda input:input[1][OrderInScaffold])]
+        else:
+            self.contigNames=None
         self.linesize=linesize
         self.contigloc=contigloc
             
@@ -191,6 +194,7 @@ class Scaffold(object):
                 scaffile.seek(-2,1)
             if not scaffile.readline().endswith('\n'):
                 scaffile.write('\n')
+
     def chunker(self,string,chunksize,end):
         ''' Creates chunks from string and appends an end term
         Note this return generator - should be iterated over'''
