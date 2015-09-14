@@ -121,7 +121,7 @@ class DataLoader(object):
         #[1:] to remove header
         self.contigNames=list(set([x for x in self.getcolumn(self.parsetsv(covname)[1:],[0])]))
         #Using [1:] to remove header
-        self.coverages=self.parsetsv(covname)[1:]
+        self.coverages=self.parsetsv(covname) #Need headers in dataparser
         self.links=self.parsetsv(linksname)[1:]
         self.inserts=self.parsetsv(insertname)[1:]
 #### Not storing contig or bamm in memory - accessing on call
@@ -151,33 +151,4 @@ class DataLoader(object):
         except SyntaxError or TypeError:
             print "The Id does not appear to be a string or \n the linkmatrix is not iterable"
         
-
-            
-    ##Does work - extracts linking reads and passes them out
-    ##If just contig1 then gives all reads linking contig1
-    ##If both then return reads linking contig 1 and contig 2
-    def getcov(self,contig1):
-        return [row for row in self.coverages if contig1 in row]
-#Deprecated dictionary code in favour of running Bamm via os
-#~ 
-#~ ### First pythonize C link files from BamM
-    #~ if self.links:
-        #~ self.links=self.bammparse.pythonizeLinks\
-        #~ (self.bammparse.BFI, os.path.basename(bamloc.strip(os.sep))
-#~ #In bamM pythonize links calls makekey to create a key from linkpairs class 
-#~ # returns return "%d,%d" % (self.cid1, self.cid2) 
-#~ # unsure how cid remains unique
-#~ #need to read more on how Mike constructed his keys and values
-#~ #need more info on the cids for that.
-    #~ def getdictlinks(self, contig1, contig2=False):
-        #~ try:
-            #~ linkkeys=self.links.keys()
-            #~ if contig2=False:
-                #~ ###Current understanding of key is a string of cid1,2 sep by comma
-                #~ ###Therefore search cid for desired contig name, extract if present
-                #~ return [[key,self.links[key]] for key in linkkeys if contig1 in key]
-            #~ else:
-                #~ return [[key,self.links[key]] for key in linkkeys if contig1 in key and if contig2 in key]
-        #~ except AttributeError:
-            #~ print "Likely that links is not a _dict"
 

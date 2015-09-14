@@ -48,7 +48,8 @@ class DataParser(object):
                  inserts,
                  bamnames,
                  contignames,
-                 contigloc):
+                 contigloc,
+                 Verbose=True):
         ###DataParser - takes data from DataLoader instance
         ###Process - scrub completely unrealistic links (Huge insert for library)
         ###Get dictionary of contig and possibly links
@@ -66,18 +67,19 @@ class DataParser(object):
         self.scaffoldset={}
         self.contigloc=contigloc
         self.readlen=100
+        self.gaps={}
 
-    def readCounts(self,contig1,contig2,linksfile=None):
+    def readCounts(self,contig1,contig2,linksfile=None,clean=False):
         '''Gets the number of links between two contigs
         in each of 4 orientations, (0,1),(1,0),(1,1),(0,0)
         Here 0 is a read in the same direction as the contig'''
-        linksfile=self.getlinks(contig1,contig2)
+        linksfile=self.getlinks(contig1,contig2,clean=clean)
         #Changes from needing to maintain relative arrangement
         tig1ind=linksfile[0].index(contig1)
         tig2ind=linksfile[0].index(contig2)
         #Now maintains appropiate order, if refering to contigs in seperate arrangements
         #This is since index determines if x[4] refers to read of tig 1 or tig 2.
-        if tig1ind<tig2ind:
+        if tig1ind<tig2ind: #Checks how the contig1 versus contig2 are place in readsfile
             norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
             rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
         elif tig2ind<tig1ind:
@@ -86,17 +88,20 @@ class DataParser(object):
         else:
             norm=0
             rev=0
-            print "How is this possible?"
+            print "How is this possible? contig1!=contig2"
         posinvc2=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='1')])
         posinvc1=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='0')])
         total=norm+rev+posinvc2+posinvc1
         return [norm,rev,posinvc2,posinvc1,total]
         
-    def getlinks(self,contig1,contig2=False,linksfile=None):
+    def getlinks(self,contig1,contig2=False,linksfile=None,clean=False):
         '''Retrieves every link entry for one contig for every link 
         between two contigs'''
         if linksfile==None:
-            linksfile=self.links
+            if clean:
+                linksfile=self.cleanedlinks
+            else:
+                linksfile=self.links
         try:
             if contig2==False:
                 Links=[x for x in linksfile if contig1 in x]
@@ -115,7 +120,9 @@ class DataParser(object):
         '''
         if linksfile==None:
             linksfile=self.cleanedlinks
-        links=self.getlinks(contig1,False,linksfile)
+        links=self.getlinks(contig1,False,linksfile,clean=True)
+        if links==None:
+            return None
         notcontig1=set([x[0] for x in links if x[0]!=contig1])
         nottig1=set([x[1] for x in links if x[1]!=contig1])
         return list(nottig1|notcontig1)
@@ -146,15 +153,20 @@ class DataParser(object):
             Graph[contig1]=[]
             OrientedGraph[contig1]={}
             for contig2 in connections[contig1]:
-                Counts=self.readCounts(contig1,contig2)
-                index=[i for i,x in enumerate(Counts) if (x==max(Counts)) and (x>=threshold)]
-                if index==[]:
+                if connections[contig1]==None:
                     pass
-                elif len(index)>0:
-                    for i in index:
-                        if self.linkorientation(i)!=None:
-                            OrientedGraph[contig1][contig2]=[self.linkorientation(i)]
-                    Graph[contig1]=Graph[contig1]+[contig2]
+                else:
+                    Counts=self.readCounts(contig1,contig2,clean=True)
+                    #x==max(Counts) covers case of competing link orientations between two of the same
+                    #contigs - default is to the the one with most in that orientation.
+                    index=[i for i,x in enumerate(Counts) if (x==max(Counts)) and (x>=threshold)]
+                    if index==[]:
+                        pass
+                    elif len(index)>0:
+                        for i in index:
+                            if self.linkorientation(i)!=None:
+                                OrientedGraph[contig1][contig2]=[self.linkorientation(i)]
+                        Graph[contig1]=Graph[contig1]+[contig2]
         #print Graph
         #print self.makeedges(Graph)
         #print OrientedGraph
@@ -168,10 +180,10 @@ class DataParser(object):
         for tig in isolated:
             #Add all contigs with no links as individual scaffolds
             #Also remove from both Graph and OrientedGraph
-            Scaffolds["Scaffold"+str(len(Scaffolds))]={tig:[0,0,0,self.gapest(tig),0]}
-            Graph.pop(tig,None)
-            OrientedGraph.pop(tig,None)
-        print Scaffolds
+            Scaffolds["Scaffold"+str(len(Scaffolds))]={tig:[0,0,0,0,0]}
+            del Graph[tig]
+            del OrientedGraph[tig]
+        #print Scaffolds
         #Now need to retrieve each scaffold with the order,gapsize,orientation
         paths=self.makepathss(Graph,OrientedGraph)
         #Now unpacks the paths to make scaffolds
@@ -194,10 +206,11 @@ class DataParser(object):
                     i+=1
             finalnode=curnode
             Scaffolds[scafname][finalnode]=[0,0,0,self.gapest(finalnode),i]
-        for scaf in Scaffolds:
-            scaf1={}
-            scaf1[scaf]=Scaffolds[scaf]
-            self.scaffoldset[scaf]=scaffold.Scaffold(scaf1,scaf)
+        for scaf in Scaffolds: #Loop over the constructed scaffolds
+            scaf1={} #Make a dict for storing  just one scaffold
+            scaf1[scaf]=Scaffolds[scaf] #Dict with one entry -structure expected by scaffold.scaf
+            self.scaffoldset[scaf]=scaffold.Scaffold(scaf1,scaf,linesize=70,contigloc=self.contigloc) #Makes one scaffold structure
+            #and stores it in the dictionary for later calling
         return
 
     
@@ -213,7 +226,7 @@ class DataParser(object):
         paths=self.findpath(edges) #Makes the paths
         if type(paths[0])==list:
             paths=[self.tuplecollapse(x) for x in paths if x!=None]
-        print paths
+        #print paths
         return paths
         
     def edgestograph(self,edges):
@@ -235,17 +248,21 @@ class DataParser(object):
         paths=[] #The current path being considered
         doneedges=set([])
         for edge in Graph:
-            path=[edge]
             done=False
             if edge not in doneedges:
-                doneedges|=set([edge])
-                doneedges|=set([edge[::-1]])
+                path=[edge]
+                doneedges|=set([edge]) #Consider current tuple
+                doneedges|=set([edge[::-1]]) #Consider the reversed tuple
                 if len(path)==1: #Force a orientation consideration on starting pair
-                    counts=self.readCounts(edge[0],edge[1])
+                    counts=self.readCounts(edge[0],edge[1],clean=True)
                     index=counts.index(max(counts))
                     orientation=self.linkorientation(index)
                     if orientation==(1,0):
                         path[0]=path[0][::-1] #Flips tuples
+                    elif orientation==(1,1):
+                        pass
+                    elif orientation==(0,0):
+                        pass
                 while not done: #Extend the path
                     frontedge=[x for x in Graph if path[-1][1]==x[0] and (x not in doneedges) and (x[::-1] not in doneedges) ]#and x[::-1]!=path[-1]
                     backedge=[x for x in Graph if path[0][0]==x[1] and (x not in doneedges) and (x[::-1] not in doneedges) ]#and x[::-1]!=path[0]
@@ -264,8 +281,8 @@ class DataParser(object):
                         doneedges=doneedges | set([newfront])
                         doneedges=doneedges | set([newfront[::-1]])
                     else:
+                        print edge
                         done=True
-                
                 paths.append(path)
         #print paths
         return paths
@@ -278,17 +295,17 @@ class DataParser(object):
         #best can =1 since earlier threshold for edges was 5
         maxcounts=[]
         best=0
-        print posedges
+        #print posedges
         if posedges==[]: ##Consider if there were no possible edges
-            print path,"This is the Path"
+            #print path,"This is the Path"
             return None
         #Need to add check against those reads in the path
         for edge in posedges:
             if front:
-                counts=self.readCounts(path[-1][0],edge[0])
+                counts=self.readCounts(path[-1][0],edge[0],clean=True)
                 ori=self.linkorientation(counts.index(max(counts)))
             elif front==False:
-                counts=self.readCounts(edge[0],path[0][0]) #Reorder ensures orientation for later
+                counts=self.readCounts(edge[0],path[0][0],clean=True) #Reorder ensures orientation for later
                 ori=self.linkorientation(counts.index(max(counts)))
             else:
                 pass
@@ -298,11 +315,12 @@ class DataParser(object):
         if maxcounts!=[]:
             best=max(maxcounts)
         if type(best)!=tuple:
-            print path,"This is the Path for typeerror"
+            print best, "This is the path for typeerror"
+            #print path,"This is the Path for typeerror" ###PPAY ATTENTIONT TO THIS ERROR - IT COULD BE QUITE IMPORTANT
             return None
         for count,tup in maxcounts:
             if float(count)/best[0]>threshold and (count,tup)!=best:
-                print path,"This is the Path for too many competing options"
+                #print path,"This is the Path for too many competing options"
                 return None
         return best[1]
 
@@ -345,29 +363,16 @@ class DataParser(object):
         lists[b], lists[a] = lists[a], lists[b]
         return lists
         
-    def arrangenplace(self,linkdirs):
+    def flipdec(self,linkdirs):
         ''' Return tuple indicating how a pair of linked
         contigs should be arranged based on their read orientations'''
-        flipplace=False
         flipsequence=False
         or1,or2=linkdirs
         or1=int(or1)
         or2=int(or2)
-        if or1==1 and or2==0:
+        if (or1+or2)!=1:
             flipplace=True
-            flipsequence=False
-        elif or1==0 and or2==1:
-            flipplace=False
-            flipsequence=False
-        elif or1==1 and or2==1:
-            flipplace=None
-            flipsequence=True
-        elif or1==0 and or2==0:
-            flipplace=None
-            flipsequence=True
-        else:
-            pass
-        return (flipplace,flisequence)
+        return flipplace
                 
     def linkorientation(self,index):
         '''Index of counts gives an idea of read orientation'''
@@ -386,7 +391,7 @@ class DataParser(object):
             print "The index needs to be integer"
             
     def cleanlinks(self,linksfile=None,insertfile=None,cutoff=3):
-        ''' Trims of the incredibly unrealisticly gapped reads
+        ''' Trims off reads with unrealistic large reads for the library
          before use downstream - should save computation and prevent
         erroneous computation'''
         if linksfile==None:
@@ -401,11 +406,17 @@ class DataParser(object):
         bamnameindex=8
         for name in bamNames:
             #Should give unique insert mean and insert std
-            meaninsert[name]=[x[1] for x in insertfile if name+".bam" in x]
-            stdinsert[name]=[x[2] for x in insertfile if name+".bam" in x]
+            meaninsert[name]=[float(x[1]) for x in insertfile if name+".bam" in x]
+            stdinsert[name]=[float(x[2]) for x in insertfile if name+".bam" in x]
             ####Need to mod this list compre to get b
         cleanedlinks=[x for x in linksfile if self.lowerdist(x)<\
-        meaninsert[x[bamnameindex].strip('.bam')]+cutoff*stdinsert[x[bamnameindex].strip('.bam')]]
+        (meaninsert[x[bamnameindex].strip('.bam')][0]+cutoff*stdinsert[x[bamnameindex].strip('.bam')][0])]
+        #for x in cleanedlinks:
+            #print self.lowerdist(x),
+        #print meaninsert
+        #print stdinsert
+        for name in bamNames:
+            print (meaninsert[name]+cutoff*stdinsert[name]), "This was the cutoff"
         self.cleanedlinks=cleanedlinks
         self.mean=meaninsert
         self.std=stdinsert
@@ -420,6 +431,7 @@ class DataParser(object):
         
         self.makescaffolds(Graph,OrientedGraph) #Makes set of scaffolds
         self.printscaffolds()
+        self.gapprint()
 
     def printscaffolds(self,filename='testScaffold'):
         try:
@@ -434,11 +446,11 @@ class DataParser(object):
          reads (ignores gap between contigs)'''
         orientation1=int(onelink[4])
         orientation2=int(onelink[7])
-        if orientation1:
+        if orientation1==1:
             dist1=int(onelink[3])
         else:
             dist1=int(onelink[2])-int(onelink[3])
-        if orientation2:
+        if orientation2==1:
             dist2=int(onelink[6])
         else:
             dist2=int(onelink[5])-int(onelink[6])
@@ -507,8 +519,9 @@ class DataParser(object):
                 print "There has been an error"
                 return 1
             distance=self.MLsearch(cmin,cmax,r,mu[0],sigma[0],observations)
-            print "Tig 1:",contig1,"Tig2",contig2
-            print "The ML distance is {0}".format(distance)
+            #print "Tig 1:",contig1,"Tig2",contig2
+            #print "The ML distance is {0}".format(distance)
+            self.gaps[(contig1,contig2)]=distance
         if contig2==False:
             distance=0
         return distance
@@ -603,3 +616,93 @@ class DataParser(object):
                 d_lower=d_ML
         Gapsize=int(round((d_upper+d_lower)/2.0,0))
         return Gapsize
+    def CoverageCheck(self,contig1,contig2):
+        from scipy.special import erf
+        from scipy.stats import norm
+        from scipy.constants import pi
+        from math import exp
+        #Approximate the coverage as a normal distribution with mean mu
+        #and stdDev sigma.
+        #Then the probability that two given contigs are not from the same genome
+        #based on covrage is the |norm.cdf(x)-
+        #Cumulative Density function for the normal distribution norm.cdf(x)
+        return
+        
+    def getcoverage(self):
+        bammcov={}
+        header=self.coverages[0] #Header row
+        Indices=[]
+        try:
+            #Get locations of mean and std for each bam file in input
+            for i,x in enumerate(self.bamnames):
+                modx=x+".bam"
+                if modx in header:
+                    Indices.append(header.index(modx))
+                    #dict with bamname, and the mean and std coverage for that contig in that bam
+                    bammcov[x]={x[0]: [x[i],x[i+1]] for l in self.coverages}
+            return bammcov
+        except KeyError:
+            print "There is a missing bam in the coverage info"
+            return False
+            
+    def defactcov(self):
+        bammcov={}
+        header=self.coverages[0] #Header row
+        Indices=[]
+        try:
+            #Get locations of mean and std for each bam file in input
+            for i,x in enumerate(self.bamnames):
+                modx=x+".bam"
+                if modx in header:
+                    Indices.append(header.index(modx))
+                    #dict with bamname, and the mean and std coverage for that contig in that bam
+                    bammcov[x]={x[0]: [x[i],x[i+1]] for l in self.coverages}
+            return bammcov
+        except:
+            print "There was an error in coverage extraction"
+            return False
+
+    def metabatprobtest(self,contig1,contig2,coverages,lower=0.01,upper=0.95):
+        return
+
+    def gapprint(self):
+        import os
+        if not os.path.isfile("Gapdata.txt"):
+            with open("Gapdata.txt",'w') as Gaps:
+                Gaps.write("Contig1,Contig2,Orientation,gapestimate\n")
+        with open("Gapdata.txt",'a+') as Gaps:
+            for tigtuple in self.gaps:
+                Gaps.write("{0},{1},Default,{2}\n".format(tigtuple[0],tigtuple[1],self.gaps[tigtuple]))
+        return
+    def flagprint(self):
+        return
+
+    def scafsum(self):
+        self.gapprint()
+        return
+
+    def output(self):
+        self.gapprint()
+        self.scafsum()
+        return
+    def distancecalc(self,means,var,tol=10**(-9)):
+        ''' sums the difference in probability density between theorectical
+        coverage distributions untill changes are less than some predefined tolerance''' 
+        import random 
+        from scipy.stats import norm
+        import numpy as np
+        from math import sqrt
+        start=0
+        end=0
+        dist=0
+        i=0
+        change=1
+        while abs((change))>tol or i<max(means)+100: # or i<max(means)
+            if i==max(means)-1:
+                print "Leaving the loop soon"
+            change=abs(norm.pdf(i,loc=means[0],scale=sqrt(var[0]))-norm.pdf(i,loc=means[1],scale=sqrt(var[1])))
+            dist+=change
+            i+=1
+        print i
+        return dist/float(2)
+        

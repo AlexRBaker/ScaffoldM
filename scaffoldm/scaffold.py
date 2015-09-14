@@ -103,7 +103,7 @@ class Scaffold(object):
                 seq=''.join(contigseq)
                 return seq
         except:
-            print "Error opening file:", contigfile,sys.exc_info()[0]
+            print "Error opening file:", contigloc,sys.exc_info()[0]
             raise
     #all_keys = set().union(*(d.keys() for d in mylist)) gets all
     # from list of dicts

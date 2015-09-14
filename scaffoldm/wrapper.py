@@ -81,9 +81,10 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     covnames=args.covs
     insertnames=args.inserts
     libnos=args.librarynumber
+    libnos=[str(ele) for ele in libnos]
     print libnos
     print args
-    
+    ##Loads up the bams and passes them onto BamM to get links, coverage etc.
     data=DataLoader(bamnames,
                  contigloc,
                  libno=libnos,
@@ -97,5 +98,12 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
                             data.bamnames,
                             data.contigNames,
                             data.contigloc)
+    #Tells the parser to process the data
     parser.parse()
+    #parser.output() #Prints some summary information used in quality assessments.
+    #namely gap sizes and a scaffold summary file for easy parsing.
+    
+    ###Visualise will include some coverage based graphs,
+    ###A representation of the network of linked contigs
+    ###And, maybe some graphs of gap size
     #parser.visualise()
