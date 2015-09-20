@@ -125,7 +125,7 @@ class DataLoader(object):
         #Using [1:] to remove header
         self.links=self.parsetsv(linksname)[1:]
         self.inserts=self.parsetsv(insertname)[1:]
-        self.getcovs() #Extract coverage mean and variance - defines self.coverages as
+        self.getcovs(covname) #Extract coverage mean and variance - defines self.coverages as
         #dict[bamname][tigname]=[coveragemean,coveragesd]
 
 ###All for parsing tsv file of links (BamM command line output)
@@ -157,20 +157,20 @@ class DataLoader(object):
         tig=(0,0)
         bam=(0,0)
         try:
-            means=parsetsv(covname)
+            means=self.parsetsv(covname)
             N_bams=len(means[0])-2 #Excludes contig name and length columns
-            N_tigs=len(getcolumn(means,[0]))-1
-            variance=parsetsv(covname.split(".tsv")[0]+"var.tsv")
+            N_tigs=len(self.getcolumn(means,[0]))-1
+            variance=self.parsetsv(covname.split(".tsv")[0]+"var.tsv")
             Nam_Bam1=means[0][2:]
-            Tigs=getcolumn(means,[0])[1:]
+            Tigs=self.getcolumn(means,[0])[1:]
             coverage={}
             #Assuming bamnames are in same order - check later
             #Create a dictionary for each bam file with a mean,sd entry for each 
             coverages={(Nam_Bam1[bam].split(".bam")[0]):\
             {(Tigs[tig]):[float(means[tig+1][bam+2]),float(variance[tig+1][bam+2])**0.5] \
             for tig in range(N_tigs)} for bam in range(N_bams)}
-            self.coverages=coverage
-            tiglen={Tig[tig]:int(means[tig+1][1]) for tig in N_tigs}
+            self.coverages=coverages
+            tiglen={Tigs[tig]:int(means[tig+1][1]) for tig in range(N_tigs)}
             self.tiglen=tiglen
         except IndexError:
             print "The index was out of bounds"

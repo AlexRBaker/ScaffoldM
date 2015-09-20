@@ -50,6 +50,7 @@ class DataParser(object):
                  contignames,
                  contigloc,
                  tiglen,
+                 readsize=100,
                  Verbose=True):
         ###DataParser - takes data from DataLoader instance
         ###Process - scrub completely unrealistic links (Huge insert for library)
@@ -68,8 +69,7 @@ class DataParser(object):
         self.scaffoldset={}
         self.contigloc=contigloc
         self.tiglen=tiglen
-        print self.tiglen
-        self.readlen=100
+        self.readlen=readsize
         self.gaps={}
 
     def readCounts(self,contig1,contig2,linksfile=None,clean=False):
@@ -227,7 +227,7 @@ class DataParser(object):
         a contig needs to be flipped. The flipping flag will trigger a down stream process
         to write a flag file with possible inversions. It is checked elsewhere if the flip will ensure
         the 0,1 read orientation. For, for the righthand side this would be needing a 0,0 to flip and LHS
-        a 1,1.'''
+        a 1,1. Note that arrange is decided for each pair and is such that if it needs to flip then the prevnode will be flipped'''
         links=self.readCounts(prevnode,curnode,clean=True)
         linkind=links.index(max(links)) #Assumes the maximum linked direction is used 
         #This assumption is throughout ScaffoldM
@@ -235,7 +235,8 @@ class DataParser(object):
         #eg (1,0) and (0,1) don't need an inversion, (0,0) and (1,1) do.
         if orientation==2:
             return 1 #INdicates a need to invert a sequence
-        elif orientation==0:
+        elif orientation==0: #Issue - need to flip curnode not prevnode
+            ##Might nto be picked up when considering next pair
             return 1 #INdicates a need to invert a sequence
         elif orientation==1:
             return 0 #Do nothing
@@ -326,8 +327,8 @@ class DataParser(object):
         maxcounts=[]
         best=0
         nextcheck=True #Whether or not next linking test is needed
-        test1=True
-        test2=True
+        test1=True #Whether sspace-like decision 1 was passed
+        test2=True #whether sspace-like decision 2 was passed
         #print posedges
         if posedges==[]: ##Consider if there were no possible edges
             #print path,"This is the Path"
@@ -355,24 +356,29 @@ class DataParser(object):
             return None
         for count,tup in maxcounts:
             if float(count)/best[0]>=threshold and (count,tup)!=best:
-                nextcheck=False
-                test1=False
+                nextcheck=False #Don't do the next check - failed first test
+                test1=False #Failed first threshold
                 #Loops over pssible edges and use the second metric to evaluate acceptability
         #Won't include this in decision making for the moment
         if nextcheck:
             spaceperlink=[]
             for edge in posedges:
                 if front:
-                    spaceperlink+=[seqspace(path[-1][0],edge[0])]
+                    spaceperlink+=[self.seqspace(path[-1][0],edge[0])]
                 elif front==False:
-                    spacerperlink+=[seqspace(path[0][0],edge[0])]
+                    spaceperlink+=[self.seqspace(path[0][0],edge[0])]
                 else:
                     pass
-            biggest=max(spacerperlink)
-            bigind=spacerperlink.index(biggest)
-            ratios=[x/float(biggest) for i,x in enumerate(spacerperlink) if i!=bigind] #Look at all ratios but biggest/biggest
-            if max(ratios)>=threshold:
+            biggest=max(spaceperlink)
+            bigind=spaceperlink.index(biggest)
+            ratios=[x/float(biggest) for i,x in enumerate(spaceperlink) if i!=bigind] #Look at all ratios but biggest/biggest
+            if ratios!=[]:
+                if max(ratios)>=threshold:
+                    test2=False
+            else:
                 test2=False
+        elif not nextcheck:
+            test2=False
         #Now for coverage based method
         #merge in above loop for 2nd sspace later
         for edge in posedges:
@@ -381,9 +387,9 @@ class DataParser(object):
                 covtests+=[self.metabatprobtest(path[-1][0],edge[0])]
             elif front==False:
                 covtests+=[self.metabatprobtest(path[0][0],edge[0])]
-            accept=[True if x=='Accept' for x in covtests]
-            reject=[True if x=='Reject' for x in covtests]
-        if test1==False or test2==False:
+            accept=[True  if x=='Accept'  else False for x in covtests]
+            reject=[True if x=='Reject' else False for x in covtests]
+        if test1 and test2: #Pass both SSPACE tests
             print "SSPACE-like rejection"
             return None
         ###Now need to check if edge satisfies coverage - red false +ve
@@ -401,17 +407,21 @@ class DataParser(object):
         per link. The sequence space per link is then compared and if the ratio is > threshold not links
         are made.'''
         ###Need to improve gapestimator for this to be effective.
-        seqspace=self.mean ##Need to check inserts for each set of links and weight mean by each one
+        seqspaces=self.mean ##Need to check inserts for each set of links and weight mean by each one
         cover=[]
-        for key in seqspace:
-            N_rpbam+=[len(getlinks(tig1,tig2,bam=key+".bam"))] #Number of links per bam library
-            cover+=[min(self.tiglen[tig2],seqspace[key]-tempgap)]
+        N_rpbam=[]
+        tempgap=self.gapest(tig1,tig2)
+        for key in seqspaces:
+            N_rpbam+=[len(self.getlinks(tig1,tig2,bam=key+".bam"))] #Number of links per bam library
+            cover+=[min(self.tiglen[tig2],seqspaces[key][0]-tempgap)]
             #Using arithmetic mean here.
-        mean=sum[x/float(N_rpbam[i]) for i,x in enumerate(cover)])/3 #Average seqspace per link over bams
+        mean=sum([x/float(N_rpbam[i]) for i,x in enumerate(cover)])/3 #Average seqspace per link over bams
         return mean
 
     
     def tuplecollapse(self,tuplist):
+        '''Takes a list of tuples and then joins them into one longer tuple
+        if they share edges'''
         x=None
         y=None
         orientation=0
@@ -644,13 +654,14 @@ class DataParser(object):
         #term 1,2 and 3 denodes what part of the function we are integrating term1 for first (ascending), etc...
         term2=(c_min-readLen+1)/2.0*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))- erf((c_min+d+readLen-mean)/((2**0.5)*stdDev))   )
 
-        first=-((pi/2)**0.5)*(d+2*readLen-mean-1)*( erf((c_min+d+readLen-mean)/(2**0.5*float(stdDev))) - erf((d+2*readLen-1-mean)/(2**0.5*float(stdDev)))  )
-        second=stdDev*( exp(-( (d+2*readLen-1-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_min+d+readLen-mean)**2)/(float(2*stdDev**2)))) 
+        first=-(d+2*readLen-mean-1)/2.0*( erf((c_min+d+readLen-mean)/(2**0.5*float(stdDev))) - erf((d+2*readLen-1-mean)/(2**0.5*float(stdDev)))  )
+        
+        second=(stdDev/((2*pi)**0.5))*( exp(-( (d+2*readLen-1-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_min+d+readLen-mean)**2)/(float(2*stdDev**2)))) 
         term1=first+second
 
-        first=((pi/2)**0.5)*(c_min+c_max+d-mean+1)*( erf((c_min+c_max+d-mean)/(2**0.5*float(stdDev))) - erf((c_max+readLen+d-mean)/(2**0.5*float(stdDev)))  )
+        first=(c_min+c_max+d-mean+1)/2.0*( erf((c_min+c_max+d-mean+1)/(2**0.5*float(stdDev))) - erf((c_max+readLen+d-mean)/(2**0.5*float(stdDev)))  )
         #print 'First: ',first
-        second=stdDev*( exp(-( (c_min+c_max+d-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_max+readLen+d-mean)**2)/(float(2*stdDev**2))))
+        second=(stdDev/((2*pi)**0.5))*( exp(-( (c_min+c_max+d-mean+1)**2)/(float(2*stdDev**2))) - exp(-( (c_max+readLen+d-mean)**2)/(float(2*stdDev**2))))
         #print 'Second: ',second
         term3=first+second
         denom=term1+term2+term3
@@ -667,7 +678,7 @@ class DataParser(object):
         #num1=( erf((cmin+cmax+d+1-mu)/(2**0.5*float(sigma))) +erf((mu-d-cmax-r-1)/(2**0.5*float(sigma))))*(pi/2)**0.5
         #num2=-(erf((cmin+d+r+1-mu)/(2**0.5*float(sigma)))+erf((mu-d-2*r+1)/(2**0.5*float(sigma))))*(pi/2)**0.5
         num1=1/2.0*(erf((cmin+cmax+d+1-mu)/float(2**0.5*sigma))+erf((d+2*r-1-mu)/(2**0.5*float(sigma))))
-        num2=-1/2.0*(erf((cmax+d+r-mu)/(2**0.5*sigma))+erf((cmin+d+r-mu)/(2**0.5*pi)))
+        num2=-1/2.0*(erf((cmax+d+r-mu)/(2**0.5*sigma))+erf((cmin+d+r-mu)/(2**0.5*sigma)))
         num=num1+num2 #Complete g prime
         return num
         
@@ -718,12 +729,14 @@ class DataParser(object):
 
 
     def metabatprobtest(self,contig1,contig2,lower=0.01,upper=0.95):
-        pairs=gettigcov(contig1,contig2)
+        pairs=self.gettigcov(contig1,contig2)
         prob=1
+        print pairs, "THIS IS WHERE THE PAIRS OF COV MEAN AND VAR SHOULD BE"
         for i,pair in enumerate(pairs):
-            repack=zip(*zip(n,q)[i]) #Pairs means and  vars
-            prob*=distancecalc(repack[0],repack[1])
-        prob=prob**(1/float(i)) #Geometric mean of probabilities
+            repack=zip(*pair) 
+            print repack
+            prob*=self.distancecalc(repack[0],repack[1])
+        prob=prob**(1/float(i+1)) #Geometric mean of probabilities
         #Make a decision based on the probabilties
         if prob<=lower:
             return "Accept"
