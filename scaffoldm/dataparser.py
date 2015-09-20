@@ -211,7 +211,7 @@ class DataParser(object):
                     prevnode=curnode
                     curnode=node
                     Scaffolds[scafname][prevnode]=\
-                        [0,0,self.arrange(prevnode,curnode),self.gapest(prevnode,curnode),i]
+                        [0,0,self.arrange(prevnode,curnode),self.gapest(prevnode,curnode,final=True),i]
                     i+=1
             finalnode=curnode
             Scaffolds[scafname][finalnode]=[0,0,self.arrange(prevnode,curnode),self.gapest(finalnode),i]
@@ -573,7 +573,7 @@ class DataParser(object):
                 pass
         return singletigs
 
-    def gapest(self,contig1=False,contig2=False,cleanedlinks=None,bamnames=None,default=False):
+    def gapest(self,contig1=False,contig2=False,cleanedlinks=None,bamnames=None,default=False,final=False):
         if cleanedlinks==None:
             cleanedlinks=self.cleanedlinks
         if bamnames==None:
@@ -618,7 +618,8 @@ class DataParser(object):
             distance=self.MLsearch(cmin,cmax,r,mu[0],sigma[0],observations)
             #print "Tig 1:",contig1,"Tig2",contig2
             #print "The ML distance is {0}".format(distance)
-            self.gaps[(contig1,contig2)]=distance
+            if final:
+                self.gaps[(contig1,contig2)]=distance
         if contig2==False:
             distance=0
         return distance
@@ -652,35 +653,38 @@ class DataParser(object):
         from scipy.constants import pi
         from math import exp
         #term 1,2 and 3 denodes what part of the function we are integrating term1 for first (ascending), etc...
+        #term2=(c_min-readLen+1)/2.0*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))- erf((c_min+d+readLen-mean)/((2**0.5)*stdDev))   )
         term2=(c_min-readLen+1)/2.0*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))- erf((c_min+d+readLen-mean)/((2**0.5)*stdDev))   )
-
-        first=-(d+2*readLen-mean-1)/2.0*( erf((c_min+d+readLen-mean)/(2**0.5*float(stdDev))) - erf((d+2*readLen-1-mean)/(2**0.5*float(stdDev)))  )
-        
-        second=(stdDev/((2*pi)**0.5))*( exp(-( (d+2*readLen-1-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_min+d+readLen-mean)**2)/(float(2*stdDev**2)))) 
+        #first=-(d+2*readLen-mean-1)/2.0*( erf((c_min+d+readLen-mean)/(2**0.5*float(stdDev))) - erf((d+2*readLen-1-mean)/(2**0.5*float(stdDev)))  )
+        first=-((pi/2)**0.5)*(d+2*readLen-mean-1)*( erf((c_min+d+readLen-mean)/(2**0.5*float(stdDev))) - erf((d+2*readLen-1-mean)/(2**0.5*float(stdDev)))  )
+        #second=(stdDev/((2*pi)**0.5))*( exp(-( (d+2*readLen-1-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_min+d+readLen-mean)**2)/(float(2*stdDev**2))))
+        second=stdDev*( exp(-( (d+2*readLen-1-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_min+d+readLen-mean)**2)/(float(2*stdDev**2)))) 
         term1=first+second
 
-        first=(c_min+c_max+d-mean+1)/2.0*( erf((c_min+c_max+d-mean+1)/(2**0.5*float(stdDev))) - erf((c_max+readLen+d-mean)/(2**0.5*float(stdDev)))  )
+        #first=(c_min+c_max+d-mean+1)/2.0*( erf((c_min+c_max+d-mean+1)/(2**0.5*float(stdDev))) - erf((c_max+readLen+d-mean)/(2**0.5*float(stdDev)))  )
+        first=((pi/2)**0.5)*(c_min+c_max+d-mean+1)*( erf((c_min+c_max+d-mean)/(2**0.5*float(stdDev))) - erf((c_max+readLen+d-mean)/(2**0.5*float(stdDev)))  )
         #print 'First: ',first
-        second=(stdDev/((2*pi)**0.5))*( exp(-( (c_min+c_max+d-mean+1)**2)/(float(2*stdDev**2))) - exp(-( (c_max+readLen+d-mean)**2)/(float(2*stdDev**2))))
+        #second=(stdDev/((2*pi)**0.5))*( exp(-( (c_min+c_max+d-mean+1)**2)/(float(2*stdDev**2))) - exp(-( (c_max+readLen+d-mean)**2)/(float(2*stdDev**2))))
+        second=stdDev*( exp(-( (c_min+c_max+d-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_max+readLen+d-mean)**2)/(float(2*stdDev**2))))
         #print 'Second: ',second
         term3=first+second
         denom=term1+term2+term3
         #print denom, "Denominator"
         #print term1,term2,term3
         return denom
-
     def gprimed(self,cmin,cmax,r,d,mu,sigma):
         from scipy.special import erf
         from scipy.stats import norm
         from scipy.constants import pi
         from math import exp
         #Straight from GapCalculator.py in Sahlin et al's code - rename
-        #num1=( erf((cmin+cmax+d+1-mu)/(2**0.5*float(sigma))) +erf((mu-d-cmax-r-1)/(2**0.5*float(sigma))))*(pi/2)**0.5
-        #num2=-(erf((cmin+d+r+1-mu)/(2**0.5*float(sigma)))+erf((mu-d-2*r+1)/(2**0.5*float(sigma))))*(pi/2)**0.5
-        num1=1/2.0*(erf((cmin+cmax+d+1-mu)/float(2**0.5*sigma))+erf((d+2*r-1-mu)/(2**0.5*float(sigma))))
-        num2=-1/2.0*(erf((cmax+d+r-mu)/(2**0.5*sigma))+erf((cmin+d+r-mu)/(2**0.5*sigma)))
+        num1=( erf((cmin+cmax+d+1-mu)/(2**0.5*float(sigma))) +erf((mu-d-cmax-r-1)/(2**0.5*float(sigma))))*(pi/2)**0.5
+        num2=-(erf((cmin+d+r+1-mu)/(2**0.5*float(sigma)))+erf((mu-d-2*r+1)/(2**0.5*float(sigma))))*(pi/2)**0.5
+        #num1=1/2.0*(erf((cmin+cmax+d+1-mu)/float(2**0.5*sigma))+erf((d+2*r-1-mu)/(2**0.5*float(sigma))))
+        #num2=-1/2.0*(erf((cmax+d+r-mu)/(2**0.5*sigma))+erf((cmin+d+r-mu)/(2**0.5*sigma)))
         num=num1+num2 #Complete g prime
         return num
+        
         
     def fd(self,cmin,cmax,r,d,mu,sigma):
         numer=self.gprimed(cmin,cmax,r,d,mu,sigma)
@@ -731,7 +735,6 @@ class DataParser(object):
     def metabatprobtest(self,contig1,contig2,lower=0.01,upper=0.95):
         pairs=self.gettigcov(contig1,contig2)
         prob=1
-        print pairs, "THIS IS WHERE THE PAIRS OF COV MEAN AND VAR SHOULD BE"
         for i,pair in enumerate(pairs):
             repack=zip(*pair) 
             print repack
