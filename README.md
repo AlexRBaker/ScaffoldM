@@ -1,12 +1,13 @@
-# scaffoldm
+# ScaffoldM
 
-Coverage-based scaffolder
+A coverage-based scaffolder which uses a probabilistic distance measurements to compare contigs.
 
 ## Overview
 
+
 ## Installation
 
-Comming soon...
+Coming soon...
 
 ## Example usage
 

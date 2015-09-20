@@ -114,15 +114,15 @@ class Scaffold(object):
         start=contigspec[0]
         end=contigspec[1]
         orientation=contigspec[2]
-        if start==end:
+        if start==end: #Screens for default case - no cuts to contig
             return tigseq[::(1-2*orientation)]
-        elif not orientation:
+        elif not orientation: #Orientation determinines whether or not to flip
             return tigseq[start:end:1]
         elif orientation:
             if start==0:
                 return tigseq[end::-1]
             else:
-                return tigseq[end:start-1:-1]
+                return tigseq[end:start:-1]
             
     def printscaffold(self,filename=None,header=False):
         '''contigspec gonna probably be 5 entries - start,end,orientaiton.

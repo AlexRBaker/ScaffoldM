@@ -295,24 +295,24 @@ def Falsejoins(type1errors):
                 elif ind:
                     Joins.write(str(tig)+"\n")
                 ind=True
-def trackdecisions(Truepos,Falsepos,notigs=False,N_joins=False):
+def trackdecisions(Truepos,Falsepos,falseneg,notigs=False,N_joins=False):
     import os
     if not os.path.isfile("../Results.txt"):
         with open("../Results.txt",'w') as data:
-            data.write("{0},{1}\n".format("TruePositive","FalsePositive"))
+            data.write("{0},{1},{2}\n".format("TruePositive","FalsePositive","FalseNegative"))
     with open("../Results.txt",'a+') as data:
-        data.write("{0},{1}\n".format(len(Truepos),len(Falsepos)))
+        data.write("{0},{1},{2}\n".format(len(Truepos),len(Falsepos),len(falseneg)))
     return
     
-def Visualise(scaffoldnames,gaps,covplot=False):
+def Visualise(scaffoldnames,gaps,contigloc,covplot=False):
     import matplotlib.pyplot as plt
     import numpy as np
     import scipy as sp
     import pandas as pd
-    scaffoldMgap,scaffoldMTjoins,scaffoldMFjoins=validcheck()
+    scaffoldMgap,scaffoldMTjoins,scaffoldMFjoins,scaffoldMFNeg=validcheck(contigloc=contigloc)
     data={}
     Falsejoins(scaffoldMFjoins)
-    trackdecisions(scaffoldMTjoins,scaffoldMFjoins)
+    trackdecisions(scaffoldMTjoins,scaffoldMFjoins,scaffoldMFNeg)
     sortMgap=sorted(scaffoldMgap,key=lambda x: min(x[0]))
     pairs=[(min(x[0])-1,x[1]) for x in sortMgap]
     minscafind,gap2=zip(*pairs)
@@ -330,6 +330,8 @@ def Visualise(scaffoldnames,gaps,covplot=False):
         for scaffold in scaffoldnames:
             plotcoverage(scaffold)
     return
+    
+
     
 def plotcoverage(name):
     return
@@ -367,6 +369,8 @@ def multiplot(x,y,xname,yname,title,legend,saveloc,log=False):
     plt.close()
 
 def multibar(x,y,xlab,ylab,title,saveloc,legend):
+    #Sourced from :http://matplotlib.org/examples/api/barchart_demo.html
+    #To be modified heavily later
     import numpy as np
     import matplotlib.pyplot as plt
     N = 5
@@ -395,11 +399,13 @@ def multibar(x,y,xlab,ylab,title,saveloc,legend):
     autolabel(rects2)
     plt.show()
     
-def validcheck(gapdataloc="Gapdata.txt"):
+def validcheck(gapdataloc="Gapdata.txt",contigloc='MG1655refslices.fna'):
     '''Uses Gapdata.txt to compare observed scaffolds to known scaffold'''  
     validgaps=[]
     truejoins=[]
     falsejoins=[]
+    falsenegs=[]
+    truepairs=[(i,i+1) for i in range(1,len(contiglen(contigloc)))]
     with open(gapdataloc) as gaps:
         gaps.readline() #Move past header
         for line in gaps:
@@ -415,7 +421,10 @@ def validcheck(gapdataloc="Gapdata.txt"):
                 truejoins.append((tig1,tig2))
             else:
                 falsejoins.append((tig1,tig2))
-    return [validgaps,truejoins,falsejoins]
+    print "THESE ARE THE FALSENEGATIVES"
+    falsenegs=[x for x in truepairs if x not in zip(*validgaps)[0]] 
+    print falsenegs
+    return [validgaps,truejoins,falsejoins,falsenegs]
 
 def NXcalc(X,tiglengths):
     tot=sum(tiglengths)
@@ -438,31 +447,123 @@ def parsetsv(filename='links.tsv',delim=',',header=False):
     return parsed
     
 def getlinks(contig1,contig2,filename='links.tsv'):
-    links=parsetsv(filename,delim=',')
+    links=parsetsv(filename,delim='\t')
     flags=[]
-    for link in links:
+    for link in links[1:]:
         tig1=0
         tig2=0
         for col in link:
+            #Need to change for simple contig names since I stripped the full name earlier
             if contig1 in col:
                 tig1=1
             if contig2 in col:
                 tig2=1
         if tig1+tig2==2:
-            flags.appen(link)
-    print flags
+            flags.append(link)
+    #print flags
     return flags
-    
-def linkdist(x):
-    tig1=int(x[3])
-    tig2=int(x[6])
-    return
 
-def extracttigs(filename='ScafMFalseJoins.fasta'):
+def linkdist(onelink):
+    '''distance from relevant edge for each contig in the link'''
+    orientation1=int(onelink[4])
+    orientation2=int(onelink[7])
+    if orientation1==1:
+        dist1=int(onelink[3])
+    else:
+        dist1=int(onelink[2])-int(onelink[3])
+    if orientation2==1:
+        dist2=int(onelink[6])
+    else:
+        dist2=int(onelink[5])-int(onelink[6])
+        #Returns tuple of distances and contig names
+    return  ((dist1,onelink[0]),(dist2,onelink[1]))
+
+def extracttigs(filename='ScafMFalseJoins.fasta',outfile='mislinkseq.fasta',contigloc='MG1655refslices.fna'):
     missjoins=parsetsv(filename,delim=',',header=False)
-    print missjoins
-    for line in missjoins[1:]:
-        tigs=
+    missjoins=[[y.rstrip('\n') for y in x] for x in missjoins]
+    print "THe faulty contig pair",missjoins
+    print "You are right before the loop"
+    for line in missjoins:
+        #print line
+        #print line[0],
+        tigs=getlinks(line[0],line[1]) #Extract missjoins
+        #print "This is the links",tigs
+        orientation=(tigs[0][4],tigs[0][7]) #Assuming only one orientation present - risky
+        #print "This is the orientation",orientation
+        #Fix this assumption later
+        dists=[linkdist(x) for x in tigs] #Get links distances
+        #print "This is the distance",dists
+        #Works with assumption that joins are always in same order - they are
+        maximum=[max(x) for x in zip(*dists)] #Unzips tuple into list for each contig
+        #print "This is the maximum",maximum
+        #GEts maximum distance from edge
+        W_faultylink(maximum[0][0],maximum[1][0],maximum[0][1],maximum[1][1],orientation,outfile,contigloc)
+
+def W_faultylink(distance1,distance2,contig1,contig2,orientation,filename='mislinkseq.fasta',contigloc='MG1655refslices.fna'):
+    import os
+    import sys
+    print "Did I make it this far"
+    try:
+        if not os.path.isfile("../{0}".format(filename)):
+            with open("../{0}".format(filename),'w') as test:
+                pass
+        with open("../{0}".format(filename),'a+') as mislink:
+            mislink.write(">{0}|Distance:{1}bp_from_edge\n".format(contig1,distance1))
+            for chunk in chunker(cut(extractcontigs(contig1,contigloc,header=False).translate(None,'\n'),distance1,orientation,0),70,'\n'):
+                mislink.write(chunk)
+            mislink.write('\n')
+            mislink.write(">{0}|Distance:{1}bp_from_edge\n".format(contig2,distance2))
+            for chunk in chunker(cut(extractcontigs(contig2,contigloc,header=False).translate(None,'\n'),distance2,orientation,1),70,'\n'):
+                mislink.write(chunk)
+            mislink.write('\n')
+    except:
+        print "Errors opening file or running stuff"
+        raise ValueError
+    
+def cut(seq,slicesize,orientation,tigpairno):
+    or1=int(orientation[0])
+    or2=int(orientation[1])
+    if tigpairno==0:
+        if or1==1:
+            return seq[:slicesize]
+        else:
+            return seq[-slicesize:]
+    elif tigpairno==1:
+        if or2==1:
+            return seq[:slicesize]
+        else:
+            return seq[-slicesize:]
+
+def extractcontigs(contigname,contigloc,header=True):
+    '''Just assigns contigs file via contigloc.
+    Temporary just for use when making scaffold
+    Will extract the text for that contig'''
+    import sys
+    try:
+        with open(contigloc,'r') as Contigs:
+            head=Contigs.readline()
+            if not head.startswith('>'):
+                raise TypeError("Not a FASTA file:")
+            Contigs.seek(0)
+            title=head[1:].rstrip() ##Strips whitespace and >
+            record=0
+            contigseq=[]
+            for line in Contigs:
+                if line.startswith('>') and line.find(contigname)>=0:
+                    record=1
+                    if header:
+                        contigseq.append(line)
+                elif line.startswith('>') and contigname not in line:
+                    record=0
+                elif record==1:
+                    contigseq.append(line)
+                else:
+                    pass
+            seq=''.join(contigseq)
+            return seq
+    except:
+        print "Error opening file:", contigloc,sys.exc_info()[0]
+        raise        
     
         
             
@@ -505,7 +606,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
      These comparisons have formed the basis for improvements on ScaffoldM.')
 
     parser.add_argument('-N','--name', type=str, nargs='?', \
-		help='The name of the file',default='/home/baker/Documents/Geneslab/TestDataset/ReferenceFasta/MG1655ref.fasta')
+		help='The name of the file',default='/home/baker/Documents/Geneslab/TestFunctions/ReferenceFasta/MG1655ref.fasta')
     parser.add_argument('-P','--path', type=str, nargs='?', \
 	default='/home/baker/Packages/SSPACE-STANDARD-3.0/SSPACE_Standard_v3.0.pl', \
 		help='The name of absolute path')
@@ -535,10 +636,15 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     help='Whether or not',default=0.75)
     parser.add_argument('-w','--wrapperp',type=str,nargs='?',
     help='The path to ScaffoldM wrapper',default="~/Documents/Geneslab/ACE_s4284361/scaffoldm_project/ScaffoldM/scaffoldm/")
+    parser.add_argument('-si','--sim',type=bool,nargs='?',
+    help='Whether or not to simulate',default=True)
+    parser.add_argument('-C','--contiglocation',type=str,nargs='?',
+    help='The path to contigs',default="")
     args = parser.parse_args()
-    
+    sim=args.sim
     path=args.path
     Name=args.name
+    contigloc=args.contiglocation
     prename=os.sep.join(Name.split(os.sep)[:-1]) #Strips last layer of path
     postname=Name.split(os.sep)[-1].split(".fasta")[0]
     coverage=args.coverage
@@ -555,30 +661,34 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     trim=args.trim
     wrapperpath=args.wrapperp
     seqlen=getfastalen(Name)
-    if trim==True:
-        #Trim overall length randomly for more variability
-        pass
-    #Turn long list of cut locations into a string suitable for os.system
-    if lists==False:
-        slices=randcuts(gap,seqlen,N_slices)
-        print slices
-        slices=[str(i) for i in slices]
-        readcuts=" ".join(slices)
+    if sim==True:
+        if trim==True:
+            #Trim overall length randomly for more variability
+            pass
+        #Turn long list of cut locations into a string suitable for os.system
+        if lists==False:
+            slices=randcuts(gap,seqlen,N_slices)
+            #print slices
+            slices=[str(i) for i in slices]
+            readcuts=" ".join(slices)
+        else:
+            slices=lists
+            readcuts=" ".join(lists)
+        start=min([int(j) for i,j in enumerate(slices) if i%4==0]) #Starting position of cuts
+        end=max([int(j) for i,j in enumerate(slices) if i%4==1]) #Starting position of cuts
+        os.mkdir(postname+"cuts_S:{0}_E:{1}".format(start,end))
+        os.chdir(postname+"cuts_S:{0}_E:{1}".format(start,end))
+        slicename,completename=slicer(slices,Name)
+        #Make reads via metasim
+        readnumber=coverage*(end-start)/readlength
+        makereadswrap(readnumber,readlength,meaninsert,stdinsert,\
+        completename)
+        #splits the reads into a format suitable for 
+        completename=completename.split(".fna")[0]
+        file1,file2=splitter(completename+"-Empirical")
+        contigloc=slicename
     else:
-        slices=lists
-        readcuts=" ".join(lists)
-    start=min([int(j) for i,j in enumerate(slices) if i%4==0]) #Starting position of cuts
-    end=max([int(j) for i,j in enumerate(slices) if i%4==1]) #Starting position of cuts
-    os.mkdir(postname+"cuts_S:{0}_E:{1}".format(start,end))
-    os.chdir(postname+"cuts_S:{0}_E:{1}".format(start,end))
-    slicename,completename=slicer(slices,Name)
-    #Make reads via metasim
-    readnumber=coverage*(end-start)/readlength
-    makereadswrap(readnumber,readlength,meaninsert,stdinsert,\
-    completename)
-    #splits the reads into a format suitable for 
-    completename=completename.split(".fna")[0]
-    file1,file2=splitter(completename+"-Empirical")
+        pass
     #Make libraries.txts
     makelibrary("library",['Lib1'], [file1],[file2],[meaninsert],[error],orientation=['FR'])
     #perl SSPACE_Basic.pl -l libraries.txt -s contigs.fasta -x 0 -m 32 -o 20 -t 0 -k 5 -a 0.70 -n 15 -p 0 -v 0 -z 0 -g 0 -T 1 -b standard_out
@@ -587,16 +697,24 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
      -k {2} -a {3} -b standard_out"\
      .format("library.txt",slicename,linklimit,ratio,path))
     print "Onto BamM"
-    os.system("bamm make -d {0} -i {1}".format(slicename,completename+"-Empirical.fna"))
-    libno=[str(ele) for ele in libno]
-    librarynumbers=' '.join(libno)
-    bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",completename)+"-Empirical"
+    if sim:
+        os.system("bamm make -d {0} -i {1} --quiet".format(slicename,completename+"-Empirical.fna"))
+        libno=[str(ele) for ele in libno]
+        librarynumbers=' '.join(libno)
+        bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",completename)+"-Empirical"
+    else:
+        pass
     print bamname
     contigname=slicename
     os.system("python {0}wrapper.py -b {1} -f {2} -n {3}".format(wrapperpath,bamname,contigname,librarynumbers))
     print "You made it to the end"
     os.mkdir('graphs')
-    print slicename
+    #print slicename
     Visualise([slicename,"testScaffold.fasta","./standard_out/standard_out.final.scaffolds.fasta"],\
-    [int(slices[i+4])-int(slices[i+1]) for i in range(0,len(slices)-4,4)])
-    extracttigs()
+    [int(slices[i+4])-int(slices[i+1]) for i in range(0,len(slices)-4,4)],contigloc)
+    if sim:
+        print "You made it to the link error extractions"
+        print os.getcwd()
+        extracttigs(contigloc=slicename)
+    else:
+        pass

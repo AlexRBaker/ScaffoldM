@@ -49,6 +49,7 @@ class DataParser(object):
                  bamnames,
                  contignames,
                  contigloc,
+                 tiglen,
                  Verbose=True):
         ###DataParser - takes data from DataLoader instance
         ###Process - scrub completely unrealistic links (Huge insert for library)
@@ -66,6 +67,8 @@ class DataParser(object):
         self.contignames=contignames
         self.scaffoldset={}
         self.contigloc=contigloc
+        self.tiglen=tiglen
+        print self.tiglen
         self.readlen=100
         self.gaps={}
 
@@ -94,7 +97,7 @@ class DataParser(object):
         total=norm+rev+posinvc2+posinvc1
         return [norm,rev,posinvc2,posinvc1,total]
         
-    def getlinks(self,contig1,contig2=False,linksfile=None,clean=False):
+    def getlinks(self,contig1,contig2=False,linksfile=None,clean=False,bam=False):
         '''Retrieves every link entry for one contig for every link 
         between two contigs'''
         if linksfile==None:
@@ -104,9 +107,15 @@ class DataParser(object):
                 linksfile=self.links
         try:
             if contig2==False:
-                Links=[x for x in linksfile if contig1 in x]
+                if bam==False:
+                    Links=[row for row in linksfile if contig1 in row]
+                else:
+                    Links=[row for row in linksfile if (contig1 in row) and (bam in row) ]
             else:
-                Links=[row for row in linksfile if (contig1 in row) and (contig2 in row)]
+                if bam==False:
+                    Links=[row for row in linksfile if (contig1 in row) and (contig2 in row)]
+                else:
+                    Links=[row for row in linksfile if (contig1 in row) and (contig2 in row) and (bam in row)]
             if len(Links)>0:
                 return Links
             else:
@@ -202,10 +211,10 @@ class DataParser(object):
                     prevnode=curnode
                     curnode=node
                     Scaffolds[scafname][prevnode]=\
-                        [0,0,0,self.gapest(prevnode,curnode),i]
+                        [0,0,self.arrange(prevnode,curnode),self.gapest(prevnode,curnode),i]
                     i+=1
             finalnode=curnode
-            Scaffolds[scafname][finalnode]=[0,0,0,self.gapest(finalnode),i]
+            Scaffolds[scafname][finalnode]=[0,0,self.arrange(prevnode,curnode),self.gapest(finalnode),i]
         for scaf in Scaffolds: #Loop over the constructed scaffolds
             scaf1={} #Make a dict for storing  just one scaffold
             scaf1[scaf]=Scaffolds[scaf] #Dict with one entry -structure expected by scaffold.scaf
@@ -213,7 +222,25 @@ class DataParser(object):
             #and stores it in the dictionary for later calling
         return
 
-    
+    def arrange(self,prevnode,curnode,front=True):
+        '''Takes in the previous node and currrent node to check whether
+        a contig needs to be flipped. The flipping flag will trigger a down stream process
+        to write a flag file with possible inversions. It is checked elsewhere if the flip will ensure
+        the 0,1 read orientation. For, for the righthand side this would be needing a 0,0 to flip and LHS
+        a 1,1.'''
+        links=self.readCounts(prevnode,curnode,clean=True)
+        linkind=links.index(max(links)) #Assumes the maximum linked direction is used 
+        #This assumption is throughout ScaffoldM
+        orientation=sum(self.linkorientation(linkind)) #Check states
+        #eg (1,0) and (0,1) don't need an inversion, (0,0) and (1,1) do.
+        if orientation==2:
+            return 1 #INdicates a need to invert a sequence
+        elif orientation==0:
+            return 1 #INdicates a need to invert a sequence
+        elif orientation==1:
+            return 0 #Do nothing
+        return None
+        
     def makepathss(self,Graph,OrientedGraph):
         '''Scaffolds are equivalent to paths along the vertices of the graph.
         Here, scaffoldM uses the vertices to construct paths and returns them.
@@ -290,11 +317,17 @@ class DataParser(object):
     def joinedges(self,path,posedges=[],threshold=0.8,front=False):
         '''Includes sspace-like decision for joining edges.
         Takes a path containing ordered edges and decides which, if any,
-        of the possible edges should be joined tot the path'''
+        of the possible edges should be joined tot the path.
+        Now also has a coverage based test. This does not form links but can aid
+        in accepting or rejecting links which have passed earlier tests. In the cases
+        of ambiguity no links are made, this should reduce false positives.'''
         newedge=None
         #best can =1 since earlier threshold for edges was 5
         maxcounts=[]
         best=0
+        nextcheck=True #Whether or not next linking test is needed
+        test1=True
+        test2=True
         #print posedges
         if posedges==[]: ##Consider if there were no possible edges
             #print path,"This is the Path"
@@ -302,9 +335,11 @@ class DataParser(object):
         #Need to add check against those reads in the path
         for edge in posedges:
             if front:
+                #Note path[-1][1]==edge[0] by how the possible edges were decided
                 counts=self.readCounts(path[-1][0],edge[0],clean=True)
                 ori=self.linkorientation(counts.index(max(counts)))
             elif front==False:
+                #path[0][0]==edge[1] by how possible edges are evaluated
                 counts=self.readCounts(edge[0],path[0][0],clean=True) #Reorder ensures orientation for later
                 ori=self.linkorientation(counts.index(max(counts)))
             else:
@@ -316,14 +351,66 @@ class DataParser(object):
             best=max(maxcounts)
         if type(best)!=tuple:
             print best, "This is the path for typeerror"
-            #print path,"This is the Path for typeerror" ###PPAY ATTENTIONT TO THIS ERROR - IT COULD BE QUITE IMPORTANT
+            #print path,"This is the Path for typeerror" ###PAY ATTENTION TO THIS ERROR - IT COULD BE QUITE IMPORTANT
             return None
         for count,tup in maxcounts:
-            if float(count)/best[0]>threshold and (count,tup)!=best:
-                #print path,"This is the Path for too many competing options"
-                return None
+            if float(count)/best[0]>=threshold and (count,tup)!=best:
+                nextcheck=False
+                test1=False
+                #Loops over pssible edges and use the second metric to evaluate acceptability
+        #Won't include this in decision making for the moment
+        if nextcheck:
+            spaceperlink=[]
+            for edge in posedges:
+                if front:
+                    spaceperlink+=[seqspace(path[-1][0],edge[0])]
+                elif front==False:
+                    spacerperlink+=[seqspace(path[0][0],edge[0])]
+                else:
+                    pass
+            biggest=max(spacerperlink)
+            bigind=spacerperlink.index(biggest)
+            ratios=[x/float(biggest) for i,x in enumerate(spacerperlink) if i!=bigind] #Look at all ratios but biggest/biggest
+            if max(ratios)>=threshold:
+                test2=False
+        #Now for coverage based method
+        #merge in above loop for 2nd sspace later
+        for edge in posedges:
+            covtests=[]
+            if front:
+                covtests+=[self.metabatprobtest(path[-1][0],edge[0])]
+            elif front==False:
+                covtests+=[self.metabatprobtest(path[0][0],edge[0])]
+            accept=[True if x=='Accept' for x in covtests]
+            reject=[True if x=='Reject' for x in covtests]
+        if test1==False or test2==False:
+            print "SSPACE-like rejection"
+            return None
+        ###Now need to check if edge satisfies coverage - red false +ve
+        #If one is rejection Could recalc for the next biggest no. links
+        #Could increase true +ve and dec false -ve - might be a mistake to include
+        #Could also inc false +ve
+        #print path,"This is the Path for too many competing options"
         return best[1]
+        
+    def seqspace(self,tig1,tig2):
+        ''' The second SSPACE-like step. Here the 'sequence space' is formed in the manner described
+        by SSPACE and comparisons are made. This works by deeming the searched sequence space as being
+        the same size as the insert for the library. Then, it works out how much of this sequence space is
+        occupied by each contig (insertsize-gap between contigs) and the amount of sequence space
+        per link. The sequence space per link is then compared and if the ratio is > threshold not links
+        are made.'''
+        ###Need to improve gapestimator for this to be effective.
+        seqspace=self.mean ##Need to check inserts for each set of links and weight mean by each one
+        cover=[]
+        for key in seqspace:
+            N_rpbam+=[len(getlinks(tig1,tig2,bam=key+".bam"))] #Number of links per bam library
+            cover+=[min(self.tiglen[tig2],seqspace[key]-tempgap)]
+            #Using arithmetic mean here.
+        mean=sum[x/float(N_rpbam[i]) for i,x in enumerate(cover)])/3 #Average seqspace per link over bams
+        return mean
 
+    
     def tuplecollapse(self,tuplist):
         x=None
         y=None
@@ -416,7 +503,7 @@ class DataParser(object):
         #print meaninsert
         #print stdinsert
         for name in bamNames:
-            print (meaninsert[name]+cutoff*stdinsert[name]), "This was the cutoff"
+            print (meaninsert[name][0]+cutoff*stdinsert[name][0]), "This was the cutoff"
         self.cleanedlinks=cleanedlinks
         self.mean=meaninsert
         self.std=stdinsert
@@ -616,6 +703,7 @@ class DataParser(object):
                 d_lower=d_ML
         Gapsize=int(round((d_upper+d_lower)/2.0,0))
         return Gapsize
+
     def CoverageCheck(self,contig1,contig2):
         from scipy.special import erf
         from scipy.stats import norm
@@ -627,45 +715,36 @@ class DataParser(object):
         #based on covrage is the |norm.cdf(x)-
         #Cumulative Density function for the normal distribution norm.cdf(x)
         return
-        
-    def getcoverage(self):
-        bammcov={}
-        header=self.coverages[0] #Header row
-        Indices=[]
-        try:
-            #Get locations of mean and std for each bam file in input
-            for i,x in enumerate(self.bamnames):
-                modx=x+".bam"
-                if modx in header:
-                    Indices.append(header.index(modx))
-                    #dict with bamname, and the mean and std coverage for that contig in that bam
-                    bammcov[x]={x[0]: [x[i],x[i+1]] for l in self.coverages}
-            return bammcov
-        except KeyError:
-            print "There is a missing bam in the coverage info"
-            return False
-            
-    def defactcov(self):
-        bammcov={}
-        header=self.coverages[0] #Header row
-        Indices=[]
-        try:
-            #Get locations of mean and std for each bam file in input
-            for i,x in enumerate(self.bamnames):
-                modx=x+".bam"
-                if modx in header:
-                    Indices.append(header.index(modx))
-                    #dict with bamname, and the mean and std coverage for that contig in that bam
-                    bammcov[x]={x[0]: [x[i],x[i+1]] for l in self.coverages}
-            return bammcov
-        except:
-            print "There was an error in coverage extraction"
-            return False
 
-    def metabatprobtest(self,contig1,contig2,coverages,lower=0.01,upper=0.95):
-        return
+
+    def metabatprobtest(self,contig1,contig2,lower=0.01,upper=0.95):
+        pairs=gettigcov(contig1,contig2)
+        prob=1
+        for i,pair in enumerate(pairs):
+            repack=zip(*zip(n,q)[i]) #Pairs means and  vars
+            prob*=distancecalc(repack[0],repack[1])
+        prob=prob**(1/float(i)) #Geometric mean of probabilities
+        #Make a decision based on the probabilties
+        if prob<=lower:
+            return "Accept"
+        elif prob>=upper:
+            return "Reject"
+        else:
+            return "Uninformative"
+        
+    def gettigcov(self,contig1,contig2):
+        covs={}
+        covs[contig1]=[]
+        covs[contig2]=[]
+        for (key,val) in self.coverages.iteritems():
+            covs[contig1]+=[val[contig1]]
+            covs[contig2]+=[val[contig2]]
+        pairs=zip(covs[contig1],covs[contig2])
+        return pairs
+            
 
     def gapprint(self):
+        print "CAN YOU HEAR ME UP THERE"
         import os
         if not os.path.isfile("Gapdata.txt"):
             with open("Gapdata.txt",'w') as Gaps:
@@ -674,7 +753,9 @@ class DataParser(object):
             for tigtuple in self.gaps:
                 Gaps.write("{0},{1},Default,{2}\n".format(tigtuple[0],tigtuple[1],self.gaps[tigtuple]))
         return
+        
     def flagprint(self):
+        
         return
 
     def scafsum(self):
@@ -685,6 +766,10 @@ class DataParser(object):
         self.gapprint()
         self.scafsum()
         return
+        
+    def networkvis(self):
+        return
+        
     def distancecalc(self,means,var,tol=10**(-9)):
         ''' sums the difference in probability density between theorectical
         coverage distributions untill changes are less than some predefined tolerance''' 

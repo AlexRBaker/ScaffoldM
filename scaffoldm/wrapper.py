@@ -97,7 +97,8 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
                             data.inserts,
                             data.bamnames,
                             data.contigNames,
-                            data.contigloc)
+                            data.contigloc,
+                            data.tiglen)
     #Tells the parser to process the data
     parser.parse()
     #parser.output() #Prints some summary information used in quality assessments.
