@@ -107,7 +107,6 @@ def splitter(interleavedreads):
         print "Error opening file:", interleavedreads, sys.exc_info()[0]
         raise
         
-        
 def chunker(string,chunksize,end):
     ''' Creates chunks from string and appends an end term
     Note this return generator - should be iterated over'''
@@ -147,6 +146,7 @@ def slicer(slices,filename):
     import os
     import sys
     slices=[int(ele) for ele in slices]
+    #print slices
     try:
         with open(filename,'r+') as Genome:
             linelen=len(Genome.readlines()[3].strip("\n"))
@@ -158,7 +158,10 @@ def slicer(slices,filename):
             refhead=header[0:min(24,len(header))]
             sequence=''.join([line.translate(None,"\n") for line in Genome.readlines() if not line.startswith('>')])
             for i in range(0,len(slices),4):
-                seqslice.append(sequence[int(slices[i]):int(slices[i+1])][::int(slices[i+3])]*int(slices[i+2]))
+                if int(slices[i+3])==-1:
+                    seqslice.append(reversecompliment(sequence[int(slices[i]):int(slices[i+1])]*int(slices[i+2])))
+                elif int(slices[i+3])==1:
+                    seqslice.append(sequence[int(slices[i]):int(slices[i+1])]*int(slices[i+2]))
     except IOError: #If not openable try for file in folder one level up
         with open('..'+os.sep+filename,'r+') as Genome:
             linelen=len(Genome.readlines()[3].strip("\n"))
@@ -170,7 +173,7 @@ def slicer(slices,filename):
             refhead=header[0:min(24,len(header))]
             sequence=''.join([line.translate(None,"\n") for line in Genome.readlines() if not line.startswith('>')])
             for i in range(0,len(slices),4):
-                seqslice.append(sequence[int(slices[i]):int(slices[i+1])][::int(slices[i+3])]*int(slices[i+2]))
+                seqslice.append(sequence[int(slices[i]):int(slices[i+1])][::int(slices[i+2])]*int(slices[i+3]))
     parts=filename.split(os.sep)
     fileend=parts[-1].split(".fasta")[0]
     slicefilename=fileend+"slices.fna"
@@ -184,7 +187,7 @@ def slicer(slices,filename):
     with open(slicefilename,'a+') as tigfile:
         for i,seq in enumerate(seqslice):
             tigname=refhead+"contig"+str(i+1)+"|"+header[int(min(24,len(header))):]
-            tigfile.write(">{0}, S:{1}:E:{2}:R:{3}:OR:{4}\n".format(tigname,slices[i*4],slices[i*4+1],slices[i*4+2],slices[i*4+3]))
+            tigfile.write(">{0}, S:{1}:E:{2}:R:{3}:OR:{4}\n".format(tigname,slices[i*4],slices[i*4+1],slices[i*4+3],slices[i*4+2]))
             for chunk in chunker(seq,linelen,"\n"):
                 tigfile.write(chunk)
             tigfile.write('\n')
@@ -193,16 +196,25 @@ def slicer(slices,filename):
         tigfile.write(">{0}, S:{1}:E:{2}\n".format(tigname,start,ends))
         for chunk in chunker(sequence[start:ends],linelen,"\n"):
             tigfile.write(chunk)
-        tigfile.write('\n')
+        tigfile.write('\n') 
     return slicefilename,completefilename
     
+def reversecompliment(seq):
+    compliment={'A':'T','G':'C','T':'A','C':'G','a':'t','g':'c','t':'a','c':'g'}
+    try:
+        newseq="".join([compliment[char] for char in reversed(seq)])
+        return newseq
+    except:
+        print "This sequence has illegal characters"
+        raise
+
 def randcuts(gap,seqlen,noslices=10,rep=False,ori=False,steps=100,gapvar=False,randgaps=True):
     import random
     starts=[]
     ends=[]
     orientation=[]
     reps=[]
-    m=[-1,1]
+    m=[1]*90+10*[-1]
     replist=[1,2,3,4]
     starts.append(random.randint(0,seqlen/4))
     upperlen=(seqlen-starts[0])//noslices
@@ -340,7 +352,7 @@ def standardplot(x,y,xname,yname,title,saveloc,log=False):
     import matplotlib.pyplot as plt
     plt.gca().set_color_cycle(['blue', 'black'])
     plt.plot(x,y,'o')
-    plt.plot(y,y)
+    plt.plot(y,y,'-')
     plt.xlabel(xname)
     plt.ylabel(yname)
     plt.title(title)
@@ -423,7 +435,7 @@ def validcheck(gapdataloc="Gapdata.txt",contigloc='MG1655refslices.fna'):
                 falsejoins.append((tig1,tig2))
     print "THESE ARE THE FALSENEGATIVES"
     falsenegs=[x for x in truepairs if x not in zip(*validgaps)[0]] 
-    print falsenegs
+    print falsenegs, "The Reject|True"
     return [validgaps,truejoins,falsejoins,falsenegs]
 
 def NXcalc(X,tiglengths):
@@ -590,7 +602,6 @@ def contiglen(contigloc):
     except:
         print "Error opening file:", contigloc,sys.exc_info()[0]
         raise      
-
 def writeout(data):
     return
 
@@ -600,6 +611,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     import scipy as sp
     import os
     import sys
+    import datetime
     parser = argparse.ArgumentParser(description='Takes a Genome in Fasta format and while then parse it into predefined chunks and \
      create reads based on the overarching segments of the genome being used, inclduing the gaps\
      These reads and gaps are then parsed to both SSPace and ScaffoldM which then have there output extracted and compared.\
@@ -640,34 +652,44 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     help='Whether or not to simulate',default=True)
     parser.add_argument('-C','--contiglocation',type=str,nargs='?',
     help='The path to contigs',default="")
+    parser.add_argument('-O','--randominversions',type=bool,nargs='?',
+    help='The path to contigs',default=False)
+    parser.add_argument('-rep','--rep',type=bool,nargs='?',
+    help='Boolean- whether to repeat sequences',default=False)
     args = parser.parse_args()
-    sim=args.sim
-    path=args.path
-    Name=args.name
-    contigloc=args.contiglocation
+    ###Stuff for Simulation
+    sim=args.sim #Whether or not to simulate
+    path=args.path #path to sspace
+    Name=args.name #Path to reference genome
+    contigloc=args.contiglocation #path to contigs
     prename=os.sep.join(Name.split(os.sep)[:-1]) #Strips last layer of path
-    postname=Name.split(os.sep)[-1].split(".fasta")[0]
-    coverage=args.coverage
-    readlength=args.readlength
-    meaninsert=args.meaninsert
-    stdinsert=args.stdinsert
-    lists=args.lists
-    linklimit=args.linklimit
-    ratio=args.ratio
-    gap=args.gap
-    libno=args.libno
-    N_slices=args.nslice
-    error=args.error
-    trim=args.trim
-    wrapperpath=args.wrapperp
-    seqlen=getfastalen(Name)
+    postname=Name.split(os.sep)[-1].split(".fasta")[0] #Should be name of reference file - path and file type
+    refpath="../{0}".format(Name.split(os.sep)[-2])
+    newname="../{0}/{1}".format(Name.split(os.sep)[-2],Name.split(os.sep)[-1].split(".fasta")[0]) #For moving up and into reference folder
+    coverage=args.coverage # A specified amount of coverage for simulation
+    readlength=args.readlength #Simulated read length
+    meaninsert=args.meaninsert #Mean insert size
+    stdinsert=args.stdinsert #Std deviation in insert size
+    lists=args.lists #THe list of cuts to be made to the reference genome
+    linklimit=args.linklimit #The lower limit to accpet a pairing - eg ignore all pairs with less than k links
+    ratio=args.ratio #Ratio for SSPACE algorithm
+    gap=args.gap #Mean value for simulated gap size
+    libno=args.libno #THe number of libraries BAMM should search for amongst the reads
+    N_slices=args.nslice #THe number of slices to make
+    error=args.error #The error for SSPACE to accept read inserts
+    trim=args.trim #Can't remember what this does
+    ori=args.randominversions #Whether or not to randomly take the reverse compliment
+    rep=args.rep  #Whether or not to randomly repeat sequence in the simulation
+    wrapperpath=args.wrapperp #The path to the python wrapper
+    seqlen=getfastalen(Name) #Approximate length of the genome
+    #STuff for all comparisons
     if sim==True:
         if trim==True:
             #Trim overall length randomly for more variability
             pass
         #Turn long list of cut locations into a string suitable for os.system
         if lists==False:
-            slices=randcuts(gap,seqlen,N_slices)
+            slices=randcuts(gap,seqlen,N_slices,ori=ori)
             #print slices
             slices=[str(i) for i in slices]
             readcuts=" ".join(slices)
@@ -680,17 +702,26 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
         os.chdir(postname+"cuts_S:{0}_E:{1}".format(start,end))
         slicename,completename=slicer(slices,Name)
         #Make reads via metasim
-        readnumber=coverage*(end-start)/readlength
-        makereadswrap(readnumber,readlength,meaninsert,stdinsert,\
-        completename)
-        #splits the reads into a format suitable for 
-        completename=completename.split(".fna")[0]
-        file1,file2=splitter(completename+"-Empirical")
+        
+        simreads=False
+        if simreads:
+            readnumber=coverage*(end-start)/readlength
+            makereadswrap(readnumber,readlength,meaninsert,stdinsert,\
+            completename)
+            #splits the reads into a format suitable for
+            completename=completename.split(".fna")[0]
+            file1,file2=splitter(completename+"-Empirical")
+        else:
+            print os.getcwd()
+            file1='{0}/MG1655ref-Empirical.1_1'.format(refpath)
+            file2='{0}/MG1655ref-Empirical.1_2'.format(refpath)
+            completename=newname
         contigloc=slicename
+        #Make libraries.txts
+        makelibrary("library",['Lib1'], [file1],[file2],[meaninsert],[error],orientation=['FR'])
     else:
         pass
-    #Make libraries.txts
-    makelibrary("library",['Lib1'], [file1],[file2],[meaninsert],[error],orientation=['FR'])
+    #To separate from SIM - needs a library file
     #perl SSPACE_Basic.pl -l libraries.txt -s contigs.fasta -x 0 -m 32 -o 20 -t 0 -k 5 -a 0.70 -n 15 -p 0 -v 0 -z 0 -g 0 -T 1 -b standard_out
     print "SSPACE", slicename, "The contig file"
     os.system("perl {4} -l {0} -s {1} -x 0 \
@@ -701,11 +732,14 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
         os.system("bamm make -d {0} -i {1} --quiet".format(slicename,completename+"-Empirical.fna"))
         libno=[str(ele) for ele in libno]
         librarynumbers=' '.join(libno)
-        bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",completename)+"-Empirical"
+        bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",postname)+"-Empirical"
     else:
-        pass
+        libno=[str(ele) for ele in libno]
+        librarynumbers=' '.join(libno)
+        bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",completename)+"-Empirical"
     print bamname
     contigname=slicename
+    print datetime.datetime.now().time().isoformat()
     os.system("python {0}wrapper.py -b {1} -f {2} -n {3}".format(wrapperpath,bamname,contigname,librarynumbers))
     print "You made it to the end"
     os.mkdir('graphs')

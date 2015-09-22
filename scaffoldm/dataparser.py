@@ -96,7 +96,6 @@ class DataParser(object):
         posinvc1=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='0')])
         total=norm+rev+posinvc2+posinvc1
         return [norm,rev,posinvc2,posinvc1,total]
-        
     def getlinks(self,contig1,contig2=False,linksfile=None,clean=False,bam=False):
         '''Retrieves every link entry for one contig for every link 
         between two contigs'''
@@ -161,10 +160,10 @@ class DataParser(object):
         for contig1 in connections:
             Graph[contig1]=[]
             OrientedGraph[contig1]={}
-            for contig2 in connections[contig1]:
-                if connections[contig1]==None:
-                    pass
-                else:
+            if connections[contig1]==None:
+                pass
+            else:
+                for contig2 in connections[contig1]:
                     Counts=self.readCounts(contig1,contig2,clean=True)
                     #x==max(Counts) covers case of competing link orientations between two of the same
                     #contigs - default is to the the one with most in that orientation.
@@ -242,6 +241,14 @@ class DataParser(object):
             return 0 #Do nothing
         return None
         
+    def reversecompliment(self,seq):
+        compliment={'A':'T','G':'C','T':'A','C':'G','a':'t','g':'c','t':'a','c':'g'}
+        try:
+            newseq="".join([compliment[char] for char in reversed(seq)])
+            return newseq
+        except:
+            print "This sequence has illegal characters"
+            raise
     def makepathss(self,Graph,OrientedGraph):
         '''Scaffolds are equivalent to paths along the vertices of the graph.
         Here, scaffoldM uses the vertices to construct paths and returns them.
@@ -354,8 +361,10 @@ class DataParser(object):
             print best, "This is the path for typeerror"
             #print path,"This is the Path for typeerror" ###PAY ATTENTION TO THIS ERROR - IT COULD BE QUITE IMPORTANT
             return None
+        print maxcounts, "Here I am bugfixing"
         for count,tup in maxcounts:
             if float(count)/best[0]>=threshold and (count,tup)!=best:
+                print best, "Compared to",(count,tup)
                 nextcheck=False #Don't do the next check - failed first test
                 test1=False #Failed first threshold
                 #Loops over pssible edges and use the second metric to evaluate acceptability
@@ -373,7 +382,7 @@ class DataParser(object):
             bigind=spaceperlink.index(biggest)
             ratios=[x/float(biggest) for i,x in enumerate(spaceperlink) if i!=bigind] #Look at all ratios but biggest/biggest
             if ratios!=[]:
-                if max(ratios)>=threshold:
+                if max(ratios)>=threshold: #Second decision point
                     test2=False
             else:
                 test2=False
@@ -387,11 +396,14 @@ class DataParser(object):
                 covtests+=[self.metabatprobtest(path[-1][0],edge[0])]
             elif front==False:
                 covtests+=[self.metabatprobtest(path[0][0],edge[0])]
-            accept=[True  if x=='Accept'  else False for x in covtests]
-            reject=[True if x=='Reject' else False for x in covtests]
+        accept=[True  if x=='Accept'  else False for x in covtests]
+        reject=[True if x=='Reject' else False for x in covtests]
         if test1 and test2: #Pass both SSPACE tests
-            print "SSPACE-like rejection"
-            return None
+            return best[1]
+            #print "SSPACE-like accept"
+        else:
+            #print "SSPACE-like rejection"
+            pass
         ###Now need to check if edge satisfies coverage - red false +ve
         #If one is rejection Could recalc for the next biggest no. links
         #Could increase true +ve and dec false -ve - might be a mistake to include
@@ -440,6 +452,10 @@ class DataParser(object):
         return fuser
                 
     def dubtuple(self,tup1,tup2):
+        ''' Takes in a pair of tuples and then decides how to join them
+        on a shared edge. Eg, join (B,A) and (D,B) => (D,A,B)'''
+        #print "This is the first tuple for the bug fix", tup1
+        #print "This is the second tuple for the bug fix", tup2
         eletup1=set(tup1)
         eletup2=set(tup2)
         if tup1[-1]==tup2[0]:
@@ -508,8 +524,8 @@ class DataParser(object):
             ####Need to mod this list compre to get b
         cleanedlinks=[x for x in linksfile if self.lowerdist(x)<\
         (meaninsert[x[bamnameindex].strip('.bam')][0]+cutoff*stdinsert[x[bamnameindex].strip('.bam')][0])]
-        #for x in cleanedlinks:
-            #print self.lowerdist(x),
+        for x in cleanedlinks:
+            print self.lowerdist(x),
         #print meaninsert
         #print stdinsert
         for name in bamNames:
@@ -525,7 +541,7 @@ class DataParser(object):
         It will also call all of the scaffolds to print to the scaffold file.'''
         self.cleanlinks() #Cleans the obviously erroneous mappings
         OrientedGraph,Graph=self.makegraph() #Makes initial connections with no.reads>threshold
-        
+        self.writesometigs()
         self.makescaffolds(Graph,OrientedGraph) #Makes set of scaffolds
         self.printscaffolds()
         self.gapprint()
@@ -579,7 +595,11 @@ class DataParser(object):
         if bamnames==None:
             bamnames=self.bamnames
         if default:
+            if final:
+                self.gaps[(contig1,contig2)]=200
             return 200
+        if not contig2:
+            return 0
     #implementation of sahlini et al 2013 algorithm.
         import os
         import sys
@@ -608,8 +628,8 @@ class DataParser(object):
         mu=[float(meaninsert[x][0]) for x in meaninsert]#Mean of insert library
         l=10 #smallest correct gap expected to see
         if contig1!=False and contig2!=False:
-            c1=len(nullscaf.extractcontigs(contig1,self.contigloc,header=False).translate(None,'\n'))#length of contig 1
-            c2=len(nullscaf.extractcontigs(contig2,self.contigloc,header=False).translate(None,'\n'))#Length of contig 2
+            c1=int(self.tiglen[contig1])#length of contig 1
+            c2=int(self.tiglen[contig2])#Length of contig 2
             cmin=min(c1,c2) #Minimum length
             cmax=max(c1,c2) #Maximum length
             if len(observations)==0:
@@ -617,34 +637,11 @@ class DataParser(object):
                 return 1
             distance=self.MLsearch(cmin,cmax,r,mu[0],sigma[0],observations)
             #print "Tig 1:",contig1,"Tig2",contig2
-            #print "The ML distance is {0}".format(distance)
+            print "The ML distance is {0}".format(distance)
             if final:
                 self.gaps[(contig1,contig2)]=distance
-        if contig2==False:
-            distance=0
         return distance
 
-    #~ def gofd(self,d,cmin,cmax,r,mu,sigma):
-        #~ #Couldn't resolve difference between my and Sahlin's implementation - did they make further steps from paper?
-        #~ #Some differences didn't match paper - check later
-        #~ # The g (d) function from Sahlin et al 2013. This function
-        #~ from scipy.special import erf
-        #~ from scipy.stats import norm
-        #~ from scipy.constants import pi
-        #~ from math import exp
-        #~ c_min=cmin
-        #~ c_max=cmax
-        #~ readLen=r
-        #~ mean=mu
-        #~ stdDev=sigma
-        #~ # Terms are grouped by brackets in Sahlin et al. 2013
-        #~ Term1=((c_min-readLen+1)/2.0)*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))-erf((c_min+d+readLen-mean)/((2**0.5)*stdDev)))
-        #~ Term2=((c_min+c_max+d+1-mean)/2.0)*(erf((c_min+c_max+d+1-mean)/((2**0.5)*stdDev))-erf((c_max+d+readLen-mean)/((2**0.5)*stdDev)))
-        #~ Term3=((d+2*readLen-1-mean)/2.0)*(erf((d+2*readLen-1-mean)/((2**0.5)*stdDev))-erf((c_min+d+readLen-mean)/((2**0.5)*stdDev)))
-        #~ Term4=(stdDev/((2*pi)**0.5))*(exp(-(cmax+cmin+d+1-mean)**2/(2*float(stdDev**2)))+exp(-(d+2*readLen-1-mean)**2/(2*float(stdDev**2)))-exp(-(c_max+d+readLen-mean)**2/(2*float(stdDev**2)))-exp(-(c_min+d+readLen-mean)**2/(2*float(stdDev**2))))
-        #~ denom=Term1+Term2+Term3+Term4
-        #~ print denom, "Denominator"
-        #~ return denom
     ##Estimator functions from below are almost exact replicates of those seen in GapCalculator.py as
     ##Released by Sahlin et al 2014 on https://github.com/GapEst
     def Denominator(self,d,c_min,c_max,readLen,mean,stdDev):
@@ -652,20 +649,21 @@ class DataParser(object):
         from scipy.stats import norm
         from scipy.constants import pi
         from math import exp
+        scale=(2**0.5*float(stdDev))
         #term 1,2 and 3 denodes what part of the function we are integrating term1 for first (ascending), etc...
-        #term2=(c_min-readLen+1)/2.0*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))- erf((c_min+d+readLen-mean)/((2**0.5)*stdDev))   )
-        term2=(c_min-readLen+1)/2.0*(erf((c_max+d+readLen-mean)/((2**0.5)*stdDev))- erf((c_min+d+readLen-mean)/((2**0.5)*stdDev))   )
-        #first=-(d+2*readLen-mean-1)/2.0*( erf((c_min+d+readLen-mean)/(2**0.5*float(stdDev))) - erf((d+2*readLen-1-mean)/(2**0.5*float(stdDev)))  )
-        first=-((pi/2)**0.5)*(d+2*readLen-mean-1)*( erf((c_min+d+readLen-mean)/(2**0.5*float(stdDev))) - erf((d+2*readLen-1-mean)/(2**0.5*float(stdDev)))  )
-        #second=(stdDev/((2*pi)**0.5))*( exp(-( (d+2*readLen-1-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_min+d+readLen-mean)**2)/(float(2*stdDev**2))))
-        second=stdDev*( exp(-( (d+2*readLen-1-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_min+d+readLen-mean)**2)/(float(2*stdDev**2)))) 
+        term2=(c_min-readLen+1)/2.0*(erf((c_max+d+readLen-mean)/(scale))- erf((c_min+d+readLen-mean)/(scale))   )
+        #term2=((pi/2)**0.5)*(c_min-readLen+1)*(erf((c_max+d+readLen-mean)/(scale))- erf((c_min+d+readLen-mean)/(scale))   )
+        first=-(d+2*readLen-mean-1)/2.0*( erf((c_min+d+readLen-mean)/(scale)) - erf((d+2*readLen-1-mean)/(scale))  )
+        #first=-((pi/2)**0.5)*(d+2*readLen-mean-1)*( erf((c_min+d+readLen-mean)/(scale)) - erf((d+2*readLen-1-mean)/(scale))  )
+        second=(stdDev/((2*pi)**0.5))*( exp(-( (d+2*readLen-1-mean)**2)/(scale**2)) - exp(-( (c_min+d+readLen-mean)**2)/(scale**2)))
+        #second=stdDev*( exp(-( (d+2*readLen-1-mean)**2)/(scale**2)) - exp(-( (c_min+d+readLen-mean)**2)/(scale**2))) 
         term1=first+second
 
-        #first=(c_min+c_max+d-mean+1)/2.0*( erf((c_min+c_max+d-mean+1)/(2**0.5*float(stdDev))) - erf((c_max+readLen+d-mean)/(2**0.5*float(stdDev)))  )
-        first=((pi/2)**0.5)*(c_min+c_max+d-mean+1)*( erf((c_min+c_max+d-mean)/(2**0.5*float(stdDev))) - erf((c_max+readLen+d-mean)/(2**0.5*float(stdDev)))  )
+        first=(c_min+c_max+d-mean+1)/2.0*( erf((c_min+c_max+d-mean+1)/(scale)) - erf((c_max+readLen+d-mean)/(scale))  )
+        #first=((pi/2)**0.5)*(c_min+c_max+d-mean+1)*( erf((c_min+c_max+d-mean)/(scale)) - erf((c_max+readLen+d-mean)/(scale))  )
         #print 'First: ',first
-        #second=(stdDev/((2*pi)**0.5))*( exp(-( (c_min+c_max+d-mean+1)**2)/(float(2*stdDev**2))) - exp(-( (c_max+readLen+d-mean)**2)/(float(2*stdDev**2))))
-        second=stdDev*( exp(-( (c_min+c_max+d-mean)**2)/(float(2*stdDev**2))) - exp(-( (c_max+readLen+d-mean)**2)/(float(2*stdDev**2))))
+        second=(stdDev/((2*pi)**0.5))*( exp(-( (c_min+c_max+d-mean+1)**2)/(scale**2)) - exp(-( (c_max+readLen+d-mean)**2)/(scale**2)))
+        #second=stdDev*( exp(-( (c_min+c_max+d-mean)**2)/(scale**2)) - exp(-( (c_max+readLen+d-mean)**2)/(scale**2)))
         #print 'Second: ',second
         term3=first+second
         denom=term1+term2+term3
@@ -677,11 +675,15 @@ class DataParser(object):
         from scipy.stats import norm
         from scipy.constants import pi
         from math import exp
+        scale=(2**0.5*float(sigma))
         #Straight from GapCalculator.py in Sahlin et al's code - rename
-        num1=( erf((cmin+cmax+d+1-mu)/(2**0.5*float(sigma))) +erf((mu-d-cmax-r-1)/(2**0.5*float(sigma))))*(pi/2)**0.5
-        num2=-(erf((cmin+d+r+1-mu)/(2**0.5*float(sigma)))+erf((mu-d-2*r+1)/(2**0.5*float(sigma))))*(pi/2)**0.5
-        #num1=1/2.0*(erf((cmin+cmax+d+1-mu)/float(2**0.5*sigma))+erf((d+2*r-1-mu)/(2**0.5*float(sigma))))
-        #num2=-1/2.0*(erf((cmax+d+r-mu)/(2**0.5*sigma))+erf((cmin+d+r-mu)/(2**0.5*sigma)))
+        #changes
+        #erf((mu-d-cmax-r-1)/(2**0.5*float(sigma)))) to erf((mu-d-cmax-r)/(2**0.5*float(sigma))))
+        #erf((cmin+d+r+1-mu)/(2**0.5*float(sigma))) to erf((cmin+d+r-mu)/(2**0.5*float(sigma)))
+        #num1=( erf((cmin+cmax+d+1-mu)/(scale)) +erf((mu-d-cmax-r-1)/(scale)))*(pi/2)**0.5
+        #num2=-(erf((cmin+d+r-mu+1)/(scale))+erf((mu-d-2*r+1)/(scale)))*(pi/2)**0.5
+        num1=1/2.0*(erf((cmin+cmax+d+1-mu)/float(scale))+erf((d+2*r-1-mu)/(scale)))
+        num2=-1/2.0*(erf((cmax+d+r-mu)/(scale))+erf((cmin+d+r-mu)/(scale)))
         num=num1+num2 #Complete g prime
         return num
         
@@ -691,9 +693,11 @@ class DataParser(object):
         denom=self.Denominator(d,cmin,cmax,r,mu,sigma)
         #~ denom=self.gofd(d,cmin,cmax,r,mu,sigma)
         fofd=d+(numer/float(denom))*sigma**2
+        #print "This is the quotient", fofd-d, "Will it be super small?"
+        #print "This is the current gapsize being considered", d
         return fofd
         
-    def MLsearch(self,cmin,cmax,r,mu,sigma,observations,m=3):
+    def MLsearch(self,cmin,cmax,r,mu,sigma,observations,m=3,bayesian=True):
         noLinks=len(observations)
         #~ print observations
         #~ print noLinks
@@ -702,23 +706,50 @@ class DataParser(object):
         #Heuristics cut off from Sahlin et al.
         #mean of 10 largest - mean of 10 smallest <6*stdDev
         #At least 10 links mapping
-        # 
-        obsval=(noLinks*mu-sum(observations))/float(noLinks)
-        d_lower=max(-l,mu-cmin-cmax-m*sigma+2*r)
-        d_upper=mu+m*sigma+2*r
-        #Can do a binary search since f_d should be monotically increasing
-        #As mentioned by Sahlin et al.
-        while d_upper-d_lower>1:
-            d_ML=(d_upper+d_lower)/2.0
-            #print d_ML
-            f_d=self.fd(cmin,cmax,r,d_ML,mu,sigma)
-            if f_d>obsval:
-                d_upper=d_ML
-            else:
-                d_lower=d_ML
-        Gapsize=int(round((d_upper+d_lower)/2.0,0))
-        return Gapsize
-
+        obsval=(noLinks*mu-int(sum(observations)))/float(noLinks)-r #offset for 1 read from RF pair
+        #obsval=(int(sum(observations)))/float(noLinks)
+        print "This is the sum of the observed distance", obsval
+        #d_lower=max(-l,mu-cmin-cmax-m*sigma+2*r)
+        #d_lower=-1000
+        #d_upper=mu+m*sigma+2*r
+        if not bayesian:
+            d_upper=max(int(mu+4*sigma-2*r), 2*r) #from sahlini directly
+            d_lower=min(-int(mu+4*sigma-2*r), -2*r)
+            #Can do a binary search since f_d should be monotically increasing
+            #As mentioned by Sahlin et al.
+            while d_upper-d_lower>1:
+                d_ML=(d_upper+d_lower)/2.0
+                #print d_ML
+                f_d=self.fd(cmin,cmax,r,d_ML,mu,sigma)
+                if f_d>obsval:
+                    d_upper=d_ML
+                else:
+                    d_lower=d_ML
+            Gapsize=int(round((d_upper+d_lower)/2.0,0))
+            return Gapsize
+        elif bayesian:
+            d_upper=max(int(mu+4*sigma-2*r), 2*r) #from sahlini directly
+            d_lower=min(-int(mu+4*sigma-2*r), -2*r)
+            #Can do a binary search since f_d should be monotically increasing
+            #As mentioned by Sahlin et al.
+            while d_upper-d_lower>1:
+                d_MAP=(d_upper+d_lower)/2.0
+                #print d_MAP
+                f_d=self.bayesianeqn(cmin,cmax,r,d_MAP,mu,sigma)
+                if f_d>obsval:
+                    d_upper=d_MAP
+                else:
+                    d_lower=d_MAP
+            Gapsize=int(round((d_upper+d_lower)/2.0,0))
+            return Gapsize
+        
+    def bayesianeqn(self,cmin,cmax,r,d,mu,sigma):
+        from scipy.stats import norm
+        #Again from Sahlini
+        ML_value=self.fd(cmin,cmax,r,d,mu,sigma)
+        prior_value=sigma**2*(1/(1-norm.cdf(d,mu,sigma))*norm.pdf(d,mu,sigma))
+        return ML_value+prior_value
+    
     def CoverageCheck(self,contig1,contig2):
         from scipy.special import erf
         from scipy.stats import norm
@@ -737,7 +768,7 @@ class DataParser(object):
         prob=1
         for i,pair in enumerate(pairs):
             repack=zip(*pair) 
-            print repack
+            #print repack
             prob*=self.distancecalc(repack[0],repack[1])
         prob=prob**(1/float(i+1)) #Geometric mean of probabilities
         #Make a decision based on the probabilties
@@ -804,6 +835,11 @@ class DataParser(object):
             change=abs(norm.pdf(i,loc=means[0],scale=sqrt(var[0]))-norm.pdf(i,loc=means[1],scale=sqrt(var[1])))
             dist+=change
             i+=1
-        print i
+        #print i
         return dist/float(2)
         
+    def writesometigs(self):
+        with open('ExtractionList.fna','w') as extract:
+            for tig in self.contignames[len(self.contignames)/2:]:
+                extract.write(">{0}\n".format(tig))
+        return
