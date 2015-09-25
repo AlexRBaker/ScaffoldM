@@ -105,6 +105,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     #namely gap sizes and a scaffold summary file for easy parsing.
     
     ###Visualise will include some coverage based graphs,
-    ###A representation of the network of linked contigs
-    ###And, maybe some graphs of gap size
+    ###A representation of the network of linked contigs- shall be done via cytoscape
+    ###And, maybe some graphs of gap size(These are Done)
+    ###Also, have an N(x) graph - can crudely represent distribution of scaffodl lengths
     #parser.visualise()

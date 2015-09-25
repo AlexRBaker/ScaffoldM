@@ -144,8 +144,49 @@ class DataParser(object):
         for contig in self.contignames:
             connections[contig]= self.checklinks(contig,cleanedlinks)
         return connections
+        
+    def graphtosif(self,graph,graphname,dirty=False,final=False):
+        header="Node1   Relationship  Node2 links\n"
+        with self.tryopen(graphname,header,".sif") as network:
+            for contig1,connected in graph.iteritems():
+                for contig2 in connected:
+                    if dirty:
+                        Counts=self.readCounts(contig1,contig2,clean=False)
+                        for i,links in enumerate(Counts):
+                            if links!=0:
+                                network.write("{0}  {1} {2} {3}\n".format(contig1,\
+                                self.linkorientation(i),contig2,links)
+                    elif not dirty:
+                        Counts=self.readCounts(contig1,contig2,clean=True)
+                        network.write("{0}  {1} {2} {3}\n".format(contig1,\
+                        self.orientedgraph[contig1][contig2][0],contig2,max(Counts)))
+                    if final:
+                        network.write("{0}  {1} {2} {3}\n".format(contig1,\
+                        ,contig2,max(Counts)))
+        return
+    def tryopen(self,filename,header,filetype):
+        '''Looks for a file, if its not there, it makes the file, if
+        it is there then it returns the opened file. Remember to close the file if you call this
+        function or use: with tryopen(stuff) as morestuff.'''
+        import os
+        try:
+            if not os.path.isfile(filename+filetype):
+                with open(filename+filetype,'w') as newfile:
+                    newfile.write(header)
+            elif os.path.isfile(filename+filetype):
+                return open(filename+filetype,'a+')
+            return open(filename+filetype,'a+')
+        except:
+            print "Either could not create or open the file"
+            raise
+        
+    def stagestosif(self):
+        self.graphtosif(self.totalgraph,"Initial",dirty=True)
+        self.graphtosif(self.graph,"Threshold")
+        #self.graphtosif(self.finalgraph,"Cov_Links",final=True)
+        return
 
-    def makegraph(self,connections=None,cleanedlinks=None,threshold=5):
+    def makegraph(self,connections=None,cleanedlinks=None,threshold=5,total=False):
         ''' Intent is to get the linksfile which has been scrubbed of reads
         with far to large insert, the dictionary of contigs and all tigs with at least one read.
         This will be used to construct a graph, each contigs will be a node, it will join other contigs
@@ -175,6 +216,7 @@ class DataParser(object):
                             if self.linkorientation(i)!=None:
                                 OrientedGraph[contig1][contig2]=[self.linkorientation(i)]
                         Graph[contig1]=Graph[contig1]+[contig2]
+        self.graph=Graph
         #print Graph
         #print self.makeedges(Graph)
         #print OrientedGraph
@@ -398,6 +440,8 @@ class DataParser(object):
                 covtests+=[self.metabatprobtest(path[0][0],edge[0])]
         accept=[True  if x=='Accept'  else False for x in covtests]
         reject=[True if x=='Reject' else False for x in covtests]
+        print "These are the accept values",accept
+        print "These are the reject values", reject
         if test1 and test2: #Pass both SSPACE tests
             return best[1]
             #print "SSPACE-like accept"
@@ -545,6 +589,8 @@ class DataParser(object):
         self.makescaffolds(Graph,OrientedGraph) #Makes set of scaffolds
         self.printscaffolds()
         self.gapprint()
+        self.totalgraph=makegraph(connections=self.completecheck(self.links),self.links,threshold=0)
+        self.stagestosif()
 
     def printscaffolds(self,filename='testScaffold'):
         try:
