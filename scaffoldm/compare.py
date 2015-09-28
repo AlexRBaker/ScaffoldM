@@ -330,14 +330,14 @@ def Visualise(scaffoldnames,gaps,contigloc,covplot=False):
     minscafind,gap2=zip(*pairs)
     pairedgaps=[gap for i,gap in enumerate(gaps) if i in minscafind]
     for scaffold in scaffoldnames:
-        data[scaffold]=contiglen(scaffold)
-        data[scaffold]+=[[NXcalc(X*0.1,data[scaffold]) for X in range(1,10)]]
+        data[scaffold]=[contiglen(scaffold)]
+        data[scaffold]+=[[NXcalc(X*0.1,data[scaffold][0]) for X in range(1,11)]]
         data[scaffold]+=[[len(data[scaffold])-1]]
     #print data
     standardplot(gap2,pairedgaps,"The predicted gapsize(nt)","The actual gapsize(nt)","","ScaffoldMVTrueGap")
-    multiplot([[X*0.1 for X in range(1,10)] for i in range(0,3)],[data[scaffold][-2] \
+    multiplot([[X*0.1 for X in range(1,11)] for i in range(0,len(scaffoldnames))],[data[scaffold][-2] \
     for scaffold in scaffoldnames],"X","NX Value for the scaffold",\
-    "The NX metric for various scaffolds", scaffoldnames,"N50Metric_Scaffolds")
+    "The NX metric for various scaffolds", ["Contigs","ScaffoldM","SSPACE"],"N50Metric_Scaffolds")
     if covplot:
         for scaffold in scaffoldnames:
             plotcoverage(scaffold)
@@ -356,9 +356,9 @@ def standardplot(x,y,xname,yname,title,saveloc,log=False):
     plt.xlabel(xname)
     plt.ylabel(yname)
     plt.title(title)
-    plt.xticks([i for i in range(int(min(round(min(x),-1),round(min(y),-1))),int(max(round(max(x),-1)+10,round(max(y),-1)+10)),30)])
-    plt.yticks([i for i in range(int(round(min(y),-1)),int(round(max(y),-1)+10),30)])
-    plt.axis([min(min(x),min(y)),max(x)+2,min(y)-50,max(y)+20])
+    #plt.xticks([i for i in range(int(min(round(min(x),-1),round(min(y),-1))),int(max(round(max(x),-1)+10,round(max(y),-1)+10)),30)])
+    #plt.yticks([i for i in range(int(round(min(y),-1)),int(round(max(y),-1)+10),30)])
+    #plt.axis([min(min(x),min(y)),max(x)+2,min(y)-50,max(y)+20])
     plt.savefig('./graphs/'+saveloc+'.png',bbox_inches='tight')
     plt.close()
     return
@@ -368,13 +368,15 @@ def multiplot(x,y,xname,yname,title,legend,saveloc,log=False):
     '''For plotting lists of lists for x and y, along with an appropiate legend'''
     import matplotlib.pyplot as plt
     plt.gca().set_color_cycle(['red', 'blue', 'black'])
+    print x, "This is the x variable"
+    print y, "This is the y variable"
     for i,xdat in enumerate(x):
         plt.plot(x[i],y[i])
     plt.xlabel(xname)
     plt.ylabel(yname)
     plt.title(title)
-    plt.xticks([0.1*X for X in range(0,10)])
-    plt.axis([0,1,min(xv for xval in x for xv in xval),max(xv for xval in x for xv in xval)])
+    plt.xticks([0.1*X for X in range(0,11)])
+    plt.axis([min(xv for xval in x for xv in xval),max(xv for xval in x for xv in xval),0,1.05*max(yv for yval in y for yv in yval)])
     leg=plt.legend(legend, loc='upper right',title='Scaffolder')
     leg.get_frame().set_alpha(0)
     plt.savefig('./graphs/'+saveloc+'.png',bbox_inches='tight')
@@ -443,10 +445,12 @@ def NXcalc(X,tiglengths):
     S_tig=sorted(tiglengths)
     N50=0
     runtot=0
+    if X==0:
+        return S_tig[-1]
     for i in range(len(S_tig)):
-        N50=tiglengths[-(i+1)]
+        N50=S_tig[-(i+1)]
         runtot+=N50
-        if runtot>tot*(1-X):
+        if runtot>tot*X:
             return N50
             
 def parsetsv(filename='links.tsv',delim=',',header=False):
@@ -604,7 +608,18 @@ def contiglen(contigloc):
         raise      
 def writeout(data):
     return
-
+def makeboolean(string):
+        Val_T=("true",'t','1','yes')
+        Val_F=("false","f",'0','no')
+        try:
+            if isinstance(string,bool):
+                return string
+            if string.lower() in Val_T:
+                return True
+            elif string.lower() in Val_F:
+                return False
+        except:
+            raise TypeError("This does not appear to even be an attempt at a boolean")
 if __name__ == "__main__": ###Check if arguments coming in from command line
     import matplotlib.pyplot as plt
     import numpy as np
@@ -627,12 +642,14 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     help='The length of reads in the simulated library',default=100)
     parser.add_argument('-c','--coverage',type=int,nargs='?',
     help='Coverage in simulated library',default=30)
+    parser.add_argument('-b','--bams',type=str,nargs='*',
+    help='Coverage in simulated library',default="NA")
     parser.add_argument('-m','--meaninsert',type=int,nargs='?',
     help='The mean insert size of the library, this is the expected gap between two paired reads',default=300)
     parser.add_argument('-s','--stdinsert',type=int,nargs='?',
     help='The standard deviation of the insert size between paired reads',default=30)
     parser.add_argument('-g','--gap',type=int,nargs='?',
-    help='The gap between contigs',default=150) 
+    help='The gap between contigs',default=50) 
     parser.add_argument('-lim','--linklimit',type=int,nargs='?',
     help='The number of linking reads needed to link contigs',default=5)
     parser.add_argument('-r','--ratio',type=int,nargs='?',
@@ -648,7 +665,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     help='Whether or not',default=0.75)
     parser.add_argument('-w','--wrapperp',type=str,nargs='?',
     help='The path to ScaffoldM wrapper',default="~/Documents/Geneslab/ACE_s4284361/scaffoldm_project/ScaffoldM/scaffoldm/")
-    parser.add_argument('-si','--sim',type=bool,nargs='?',
+    parser.add_argument('-si','--sim',type=str,nargs='?',
     help='Whether or not to simulate',default=True)
     parser.add_argument('-C','--contiglocation',type=str,nargs='?',
     help='The path to contigs',default="")
@@ -656,14 +673,19 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     help='The path to contigs',default=False)
     parser.add_argument('-rep','--rep',type=bool,nargs='?',
     help='Boolean- whether to repeat sequences',default=False)
+    parser.add_argument('-Tig','--tigname',type=str,nargs='?',
+    help='Name of Fasta file for mapping',default="mergedslices.fasta")
     args = parser.parse_args()
     ###Stuff for Simulation
-    sim=args.sim #Whether or not to simulate
+    sim=makeboolean(args.sim) #Whether or not to simulate
     path=args.path #path to sspace
     Name=args.name #Path to reference genome
     contigloc=args.contiglocation #path to contigs
     prename=os.sep.join(Name.split(os.sep)[:-1]) #Strips last layer of path
-    postname=Name.split(os.sep)[-1].split(".fasta")[0] #Should be name of reference file - path and file type
+    if len(Name.split(os.sep)[-1].split(".fasta"))>1:
+        postname=Name.split(os.sep)[-1].split(".fasta")[0] #Should be name of reference file - path and file type
+    elif len(Name.split(os.sep)[-1].split(".fna"))>1:
+        postname=Name.split(os.sep)[-1].split(".fna")[0]
     refpath="../{0}".format(Name.split(os.sep)[-2])
     newname="../{0}/{1}".format(Name.split(os.sep)[-2],Name.split(os.sep)[-1].split(".fasta")[0]) #For moving up and into reference folder
     coverage=args.coverage # A specified amount of coverage for simulation
@@ -682,8 +704,11 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     rep=args.rep  #Whether or not to randomly repeat sequence in the simulation
     wrapperpath=args.wrapperp #The path to the python wrapper
     seqlen=getfastalen(Name) #Approximate length of the genome
+    bams=args.bams #name of bams
+    contigname=args.tigname #name of fasta file
     #STuff for all comparisons
-    if sim==True:
+    
+    if sim:
         if trim==True:
             #Trim overall length randomly for more variability
             pass
@@ -713,8 +738,8 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
             file1,file2=splitter(completename+"-Empirical")
         else:
             print os.getcwd()
-            file1='{0}/MG1655ref-Empirical.1_1'.format(refpath)
-            file2='{0}/MG1655ref-Empirical.1_2'.format(refpath)
+            file1='{0}/{1}-Empirical_1'.format(refpath,postname)
+            file2='{0}/{1}-Empirical_2'.format(refpath,postname)
             completename=newname
         contigloc=slicename
         #Make libraries.txts
@@ -723,32 +748,39 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
         pass
     #To separate from SIM - needs a library file
     #perl SSPACE_Basic.pl -l libraries.txt -s contigs.fasta -x 0 -m 32 -o 20 -t 0 -k 5 -a 0.70 -n 15 -p 0 -v 0 -z 0 -g 0 -T 1 -b standard_out
-    print "SSPACE", slicename, "The contig file"
-    os.system("perl {4} -l {0} -s {1} -x 0 \
-     -k {2} -a {3} -b standard_out"\
-     .format("library.txt",slicename,linklimit,ratio,path))
-    print "Onto BamM"
-    if sim:
-        os.system("bamm make -d {0} -i {1} --quiet".format(slicename,completename+"-Empirical.fna"))
+    mapreads=False
+    if mapreads:
+        print "SSPACE", slicename, "The contig file"
+        os.system("perl {4} -l {0} -s {1} -x 0 \
+         -k {2} -a {3} -b standard_out"\
+         .format("library.txt",slicename,linklimit,ratio,path))
+        print "Onto BamM"
+        if sim:
+            os.system("bamm make -d {0} -i {1} --quiet".format(slicename,completename+"-Empirical.fna"))
+            libno=[str(ele) for ele in libno]
+            librarynumbers=' '.join(libno)
+            bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",postname)+"-Empirical"
+        else:
+            libno=[str(ele) for ele in libno]
+            librarynumbers=' '.join(libno)
+            bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",completename)+"-Empirical"
+        print bamname
+        contigname=slicename
+        print datetime.datetime.now().time().isoformat()
+        os.system("python {0}wrapper.py -b {1} -f {2} -n {3}".format(wrapperpath,bamname,contigname,librarynumbers))
+        print "You made it to the end"
+        os.mkdir('graphs')
+        #print slicename
+        Visualise([slicename,"testScaffold.fasta","./standard_out/standard_out.final.scaffolds.fasta"],\
+        [int(slices[i+4])-int(slices[i+1]) for i in range(0,len(slices)-4,4)],contigloc)
+        if sim:
+            print "You made it to the link error extractions"
+            print os.getcwd()
+            extracttigs(contigloc=slicename)
+        else:
+            pass
+    if type(bams)!=str: #Check if default is being used
         libno=[str(ele) for ele in libno]
         librarynumbers=' '.join(libno)
-        bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",postname)+"-Empirical"
-    else:
-        libno=[str(ele) for ele in libno]
-        librarynumbers=' '.join(libno)
-        bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",completename)+"-Empirical"
-    print bamname
-    contigname=slicename
-    print datetime.datetime.now().time().isoformat()
-    os.system("python {0}wrapper.py -b {1} -f {2} -n {3}".format(wrapperpath,bamname,contigname,librarynumbers))
-    print "You made it to the end"
-    os.mkdir('graphs')
-    #print slicename
-    Visualise([slicename,"testScaffold.fasta","./standard_out/standard_out.final.scaffolds.fasta"],\
-    [int(slices[i+4])-int(slices[i+1]) for i in range(0,len(slices)-4,4)],contigloc)
-    if sim:
-        print "You made it to the link error extractions"
-        print os.getcwd()
-        extracttigs(contigloc=slicename)
-    else:
-        pass
+        os.system("python {0}wrapper.py -b {1} -f {2} -n {3}".format(wrapperpath,' '.join(bams),contigname,librarynumbers))
+        

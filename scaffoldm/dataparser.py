@@ -64,7 +64,7 @@ class DataParser(object):
         self.links=links
         self.coverages=coverages
         self.inserts=inserts
-        self.bamnames=bamnames
+        self.bamnames=[bam.split(".bam")[0] for bam in bamnames]
         self.contignames=contignames
         self.scaffoldset={}
         self.contigloc=contigloc
@@ -95,7 +95,7 @@ class DataParser(object):
         posinvc2=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='1')])
         posinvc1=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='0')])
         total=norm+rev+posinvc2+posinvc1
-        return [norm,rev,posinvc2,posinvc1,total]
+        return [norm,rev,posinvc2,posinvc1]
     def getlinks(self,contig1,contig2=False,linksfile=None,clean=False,bam=False):
         '''Retrieves every link entry for one contig for every link 
         between two contigs'''
@@ -146,23 +146,42 @@ class DataParser(object):
         return connections
         
     def graphtosif(self,graph,graphname,dirty=False,final=False):
-        header="Node1   Relationship  Node2 links\n"
+        print graphname, "This is the supposed graph being parsed"
+        #print "\n",graph
+        header="Node1\tRelationship\tNode2\n"
+        done=set([])
+        print self.orientedgraph
         with self.tryopen(graphname,header,".sif") as network:
-            for contig1,connected in graph.iteritems():
-                for contig2 in connected:
-                    if dirty:
-                        Counts=self.readCounts(contig1,contig2,clean=False)
-                        for i,links in enumerate(Counts):
-                            if links!=0:
-                                network.write("{0}  {1} {2} {3}\n".format(contig1,\
-                                self.linkorientation(i),contig2,links)
-                    elif not dirty:
-                        Counts=self.readCounts(contig1,contig2,clean=True)
-                        network.write("{0}  {1} {2} {3}\n".format(contig1,\
-                        self.orientedgraph[contig1][contig2][0],contig2,max(Counts)))
-                    if final:
-                        network.write("{0}  {1} {2} {3}\n".format(contig1,\
-                        ,contig2,max(Counts)))
+            with self.tryopen("{0}{1}".format(graphname,"_links"),"Contig1\tRelationship\tContig2\tSupportingLinks\n",".txt") as network2:
+                for contig1,connected in graph.iteritems():
+                    for contig2 in connected:
+                        if (contig1,contig2) not in done and (contig2,contig1) not in done:
+                            if dirty:
+                                Counts=self.readCounts(contig1,contig2,clean=False) #The 4 orientations
+                                for i,links in enumerate(Counts):
+                                    if links!=0:
+                                        network.write("{0}\t{1}\t{2}\n".format(contig1,\
+                                        self.linkorientation(i),contig2))
+                                        network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
+                                        self.linkorientation(i),contig2,links))
+                            else:
+                                Counts=self.readCounts(contig1,contig2,clean=True)
+                                network.write("{0}\t{1}\t{2}\n".format(contig1,\
+                                self.orientedgraph[contig1][contig2][0]))
+                                network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
+                                self.orientedgraph[contig1][contig2][0],contig2,max(Counts)))
+                            if final:
+                                Counts=self.readCounts(contig1,contig2,clean=True)
+                                network.write("{0}\t{1}\t{2}\n".format(contig1,\
+                                '(0,1)',contig2))
+                                network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
+                                '(0,1)',contig2,max(Counts)))
+                            done|=set([(contig1,contig2)]) #Add current pair
+                            done|=set([(contig1,contig2)[::-1]]) #Reverse of current pair
+        with self.tryopen("{0}{1}".format(graphname,"_nodes"),"Contig1\tContiglength\n",".txt") as nodes:
+            #print self.tiglen
+            for tig,length in self.tiglen.iteritems():
+                nodes.write("{0}\t{1}\n".format(tig,length))
         return
     def tryopen(self,filename,header,filetype):
         '''Looks for a file, if its not there, it makes the file, if
@@ -186,7 +205,7 @@ class DataParser(object):
         #self.graphtosif(self.finalgraph,"Cov_Links",final=True)
         return
 
-    def makegraph(self,connections=None,cleanedlinks=None,threshold=5,total=False):
+    def makegraph(self,connections=None,cleanedlinks=None,threshold=5,total=False,dirty=False):
         ''' Intent is to get the linksfile which has been scrubbed of reads
         with far to large insert, the dictionary of contigs and all tigs with at least one read.
         This will be used to construct a graph, each contigs will be a node, it will join other contigs
@@ -205,7 +224,10 @@ class DataParser(object):
                 pass
             else:
                 for contig2 in connections[contig1]:
-                    Counts=self.readCounts(contig1,contig2,clean=True)
+                    if not dirty:
+                        Counts=self.readCounts(contig1,contig2,clean=True)
+                    elif dirty:
+                        Counts=self.readCounts(contig1,contig2,clean=False)
                     #x==max(Counts) covers case of competing link orientations between two of the same
                     #contigs - default is to the the one with most in that orientation.
                     index=[i for i,x in enumerate(Counts) if (x==max(Counts)) and (x>=threshold)]
@@ -216,7 +238,9 @@ class DataParser(object):
                             if self.linkorientation(i)!=None:
                                 OrientedGraph[contig1][contig2]=[self.linkorientation(i)]
                         Graph[contig1]=Graph[contig1]+[contig2]
-        self.graph=Graph
+        if not dirty:
+            self.graph=Graph
+            self.orientedgraph=OrientedGraph
         #print Graph
         #print self.makeedges(Graph)
         #print OrientedGraph
@@ -358,7 +382,7 @@ class DataParser(object):
                         doneedges=doneedges | set([newfront])
                         doneedges=doneedges | set([newfront[::-1]])
                     else:
-                        print edge
+                        #print edge
                         done=True
                 paths.append(path)
         #print paths
@@ -403,7 +427,7 @@ class DataParser(object):
             print best, "This is the path for typeerror"
             #print path,"This is the Path for typeerror" ###PAY ATTENTION TO THIS ERROR - IT COULD BE QUITE IMPORTANT
             return None
-        print maxcounts, "Here I am bugfixing"
+        #print maxcounts, "Here I am bugfixing"
         for count,tup in maxcounts:
             if float(count)/best[0]>=threshold and (count,tup)!=best:
                 print best, "Compared to",(count,tup)
@@ -440,8 +464,8 @@ class DataParser(object):
                 covtests+=[self.metabatprobtest(path[0][0],edge[0])]
         accept=[True  if x=='Accept'  else False for x in covtests]
         reject=[True if x=='Reject' else False for x in covtests]
-        print "These are the accept values",accept
-        print "These are the reject values", reject
+        #print "These are the accept values",accept
+        #print "These are the reject values", reject
         if test1 and test2: #Pass both SSPACE tests
             return best[1]
             #print "SSPACE-like accept"
@@ -468,10 +492,12 @@ class DataParser(object):
         N_rpbam=[]
         tempgap=self.gapest(tig1,tig2)
         for key in seqspaces:
-            N_rpbam+=[len(self.getlinks(tig1,tig2,bam=key+".bam"))] #Number of links per bam library
-            cover+=[min(self.tiglen[tig2],seqspaces[key][0]-tempgap)]
+            temp=self.getlinks(tig1,tig2,bam=key+".bam")
+            if temp!=None:
+                N_rpbam+=[len(self.getlinks(tig1,tig2,bam=key+".bam"))] #Number of links per bam library
+                cover+=[min(self.tiglen[tig2],seqspaces[key][0]-tempgap)]
             #Using arithmetic mean here.
-        mean=sum([x/float(N_rpbam[i]) for i,x in enumerate(cover)])/3 #Average seqspace per link over bams
+        mean=sum([x/float(N_rpbam[i]) for i,x in enumerate(cover)])/len(seqspaces) #Average seqspace per link over bams
         return mean
 
     
@@ -562,18 +588,22 @@ class DataParser(object):
         stdinsert={}
         bamnameindex=8
         for name in bamNames:
+            #print name
             #Should give unique insert mean and insert std
             meaninsert[name]=[float(x[1]) for x in insertfile if name+".bam" in x]
             stdinsert[name]=[float(x[2]) for x in insertfile if name+".bam" in x]
             ####Need to mod this list compre to get b
+        #~ for i,x in enumerate(linksfile):
+            #~ if i%100==0:
+                #~ print x[bamnameindex].split('.bam')[0]
         cleanedlinks=[x for x in linksfile if self.lowerdist(x)<\
-        (meaninsert[x[bamnameindex].strip('.bam')][0]+cutoff*stdinsert[x[bamnameindex].strip('.bam')][0])]
-        for x in cleanedlinks:
-            print self.lowerdist(x),
+        (meaninsert[x[bamnameindex].split('.bam')[0]][0]+cutoff*stdinsert[x[bamnameindex].split('.bam')[0]][0])]
+        #for x in cleanedlinks:
+            #print self.lowerdist(x),
         #print meaninsert
         #print stdinsert
-        for name in bamNames:
-            print (meaninsert[name][0]+cutoff*stdinsert[name][0]), "This was the cutoff"
+        #~ for name in bamNames:
+            #~ print (meaninsert[name][0]+cutoff*stdinsert[name][0]), "This was the cutoff"
         self.cleanedlinks=cleanedlinks
         self.mean=meaninsert
         self.std=stdinsert
@@ -589,7 +619,9 @@ class DataParser(object):
         self.makescaffolds(Graph,OrientedGraph) #Makes set of scaffolds
         self.printscaffolds()
         self.gapprint()
-        self.totalgraph=makegraph(connections=self.completecheck(self.links),self.links,threshold=0)
+        #~ print "This is the new code"
+        self.totalgraph=self.makegraph(connections=self.completecheck(self.links),\
+        cleanedlinks=self.links,threshold=0,dirty=True)[-1]
         self.stagestosif()
 
     def printscaffolds(self,filename='testScaffold'):
@@ -683,7 +715,7 @@ class DataParser(object):
                 return 1
             distance=self.MLsearch(cmin,cmax,r,mu[0],sigma[0],observations)
             #print "Tig 1:",contig1,"Tig2",contig2
-            print "The ML distance is {0}".format(distance)
+            #print "The ML distance is {0}".format(distance)
             if final:
                 self.gaps[(contig1,contig2)]=distance
         return distance
@@ -754,7 +786,7 @@ class DataParser(object):
         #At least 10 links mapping
         obsval=(noLinks*mu-int(sum(observations)))/float(noLinks)-r #offset for 1 read from RF pair
         #obsval=(int(sum(observations)))/float(noLinks)
-        print "This is the sum of the observed distance", obsval
+        #print "This is the sum of the observed distance", obsval
         #d_lower=max(-l,mu-cmin-cmax-m*sigma+2*r)
         #d_lower=-1000
         #d_upper=mu+m*sigma+2*r
@@ -812,11 +844,14 @@ class DataParser(object):
     def metabatprobtest(self,contig1,contig2,lower=0.01,upper=0.95):
         pairs=self.gettigcov(contig1,contig2)
         prob=1
+        j=0
         for i,pair in enumerate(pairs):
             repack=zip(*pair) 
             #print repack
-            prob*=self.distancecalc(repack[0],repack[1])
-        prob=prob**(1/float(i+1)) #Geometric mean of probabilities
+            if 0 not in repack[1]:
+                prob*=self.distancecalc(repack[0],repack[1])
+                j+=1
+        prob=prob**(1/float(j)) #Geometric mean of probabilities
         #Make a decision based on the probabilties
         if prob<=lower:
             return "Accept"

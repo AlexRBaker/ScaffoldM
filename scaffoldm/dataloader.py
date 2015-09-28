@@ -35,14 +35,8 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 ###############################################################################
 ###############################################################################
-#from bamm.bamParser import BamParser - 7/08 - removed
-#from bamm.bamFile import BM_coverageType
-#from bamm.cWrapper import *
 import os
 import sys
-#cov_type = BM_coverageType(CT.P_MEAN_OUTLIER, 1, 1)
-#BP = BamParser(cov_type)
-
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -105,7 +99,7 @@ class DataLoader(object):
             #self.bammparse=BP.parseBams(bammloc,doLinks=self.links, /
             #doCovs=self.cov,threads=min(len(bammloc),CompThreads)
             #BP.printLinks('links.tsv')
-            sbamnames=".bam ".join(bamnames)+".bam"
+            sbamnames=" ".join(bamnames) #assumes that it ends in .bam
             #Alternative - continue using as CLI tool since python lib is bugged
             if self.cov==1 and self.links==1:
                 os.system("bamm parse -n {0} -b {1} -i {2} -l {3} -c {4} -m pvariance".format(' '.join(libno),sbamnames,insertname,linksname,covname.split(".tsv")[0]+"var.tsv"))
@@ -121,6 +115,7 @@ class DataLoader(object):
             print 'Error using bamm'
 
         #[1:] to remove header
+        print os.getcwd()
         self.contigNames=list(set([x for x in self.getcolumn(self.parsetsv(covname)[1:],[0])]))
         #Using [1:] to remove header
         self.links=self.parsetsv(linksname)[1:]
@@ -139,9 +134,14 @@ class DataLoader(object):
     def parsetsv(self,textfile="links.tsv"):
         ###Need to extend to attempt to detect delimiter
         ##Should be existing package for this
+        import os
         import csv
-        with open(textfile) as tsv:
-            return [line for line in csv.reader(tsv,delimiter="\t")]
+        try:
+            print os.getcwd()
+            with open(textfile) as tsv:
+                return [line for line in csv.reader(tsv,delimiter="\t")]
+        except:
+            print "This is the current directory", os.getcwd()
             
     def findIDind(self,linkmatrix,ID='cid'):
         try:

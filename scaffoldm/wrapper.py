@@ -53,7 +53,7 @@ from scaffold import Scaffold
 if __name__ == "__main__": ###Check if arguments coming in from command line
     parser = argparse.ArgumentParser(description='CreateNewContigs.')
     parser.add_argument('-b','--bam', type=str, nargs='*', \
-		help='The .bamfiles to be processed',default='Dupes.MG1655refS100E20000Complete-Empirical')
+		help='The .bamfiles to be processed',default='Dupes.MG1655refS100E20000Complete-Empirical.bam')
     parser.add_argument('-f','--fasta', type=str, nargs='?', \
 	default='Dupes.fna', \
 		help='name of links file')
@@ -84,6 +84,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     libnos=[str(ele) for ele in libnos]
     print libnos
     print args
+    #print "Looking for a bug", os.getcwd()
     ##Loads up the bams and passes them onto BamM to get links, coverage etc.
     data=DataLoader(bamnames,
                  contigloc,
@@ -91,6 +92,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
                  linksname=linksnames,
                  covname=covnames,
                  insertname=insertnames)
+    print data.bamnames, "THese are the bamnames"
     ###Note dataparser will have inside it all the scaffolds made from the data.
     parser=DataParser(data.links,
                             data.coverages,
