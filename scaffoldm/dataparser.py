@@ -693,7 +693,7 @@ class DataParser(object):
         print "This initial graph has been made"
         #Should also make the cleaned up graph here
         #print self.graph, "This should be the first stage in cleaning"
-        self.writesometigs()
+        #self.writesometigs()
         self.makescaffolds(Graph,OrientedGraph) #Makes set of scaffolds
         print "The scaffolds are now done"
         self.printscaffolds()

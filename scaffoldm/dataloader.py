@@ -116,10 +116,13 @@ class DataLoader(object):
 
         #[1:] to remove header
         #print os.getcwd()
+        print "step 1"
         self.contigNames=list(set([x for x in self.getcolumn(self.parsetsv(covname)[1:],[0])]))
-        #Using [1:] to remove header
+        print "step2"
         self.links=self.parsetsv(linksname)[1:]
+        print "step3"
         self.inserts=self.parsetsv(insertname)[1:]
+        print "step4"
         self.getcovs(covname) #Extract coverage mean and variance - defines self.coverages as
         #dict[bamname][tigname]=[coveragemean,coveragesd]
 
