@@ -77,6 +77,8 @@ class DataParser(object):
         in each of 4 orientations, (0,1),(1,0),(1,1),(0,0)
         Here 0 is a read in the same direction as the contig'''
         linksfile=self.getlinks(contig1,contig2,clean=clean)
+        if linksfile==None:
+            return [0,0,0,0]
         #Changes from needing to maintain relative arrangement
         tig1ind=linksfile[0].index(contig1)
         tig2ind=linksfile[0].index(contig2)
@@ -145,45 +147,38 @@ class DataParser(object):
             connections[contig]= self.checklinks(contig,cleanedlinks)
         return connections
         
-    def graphtosif(self,graph,graphname,dirty=False,final=False):
-        print graphname, "This is the supposed graph being parsed"
+    def graphtosif(self,graph,graphname,removed=True,dirty=False,final=False):
+        #print graphname, "This is the supposed graph being parsed"
         #print "\n",graph
-        header="Node1\tRelationship\tNode2\n"
+        header="Node1\tRelationship\tNode2\tRemoved\n"
         done=set([])
-        print self.orientedgraph
-        with self.tryopen(graphname,header,".sif") as network:
-            with self.tryopen("{0}{1}".format(graphname,"_links"),"Contig1\tRelationship\tContig2\tSupportingLinks\n",".txt") as network2:
-                for contig1,connected in graph.iteritems():
-                    for contig2 in connected:
-                        if (contig1,contig2) not in done and (contig2,contig1) not in done:
-                            if dirty:
-                                Counts=self.readCounts(contig1,contig2,clean=False) #The 4 orientations
-                                for i,links in enumerate(Counts):
-                                    if links!=0:
-                                        network.write("{0}\t{1}\t{2}\n".format(contig1,\
-                                        self.linkorientation(i),contig2))
-                                        network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
-                                        self.linkorientation(i),contig2,links))
-                            else:
-                                Counts=self.readCounts(contig1,contig2,clean=True)
-                                network.write("{0}\t{1}\t{2}\n".format(contig1,\
-                                self.orientedgraph[contig1][contig2][0]))
-                                network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
-                                self.orientedgraph[contig1][contig2][0],contig2,max(Counts)))
-                            if final:
-                                Counts=self.readCounts(contig1,contig2,clean=True)
-                                network.write("{0}\t{1}\t{2}\n".format(contig1,\
-                                '(0,1)',contig2))
-                                network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
-                                '(0,1)',contig2,max(Counts)))
-                            done|=set([(contig1,contig2)]) #Add current pair
-                            done|=set([(contig1,contig2)[::-1]]) #Reverse of current pair
-        with self.tryopen("{0}{1}".format(graphname,"_nodes"),"Contig1\tContiglength\n",".txt") as nodes:
-            #print self.tiglen
-            for tig,length in self.tiglen.iteritems():
-                nodes.write("{0}\t{1}\n".format(tig,length))
+        with self.tryopen("{0}{1}".format(graphname,"_links"),"Contig1\tRelationship\tContig2\tSupportingLinks\tRemoved\n",".txt",True) as network2:
+            for contig1,connected in graph.iteritems():
+                for contig2 in connected:
+                    if (contig1,contig2) not in done and (contig2,contig1) not in done:
+                        if dirty:
+                            Counts=self.readCounts(contig1,contig2,clean=False) #The 4 orientations
+                            for i,links in enumerate(Counts):
+                                if links!=0:
+                                    network2.write("{0}\t{1}\t{2}\t{3}\t{4}\n".format(contig1,\
+                                    self.linkorientation(i),contig2,links,removed[contig1][contig2]))
+                        elif not dirty and not final:
+                            Counts=self.readCounts(contig1,contig2,clean=True)
+                            network2.write("{0}\t{1}\t{2}\t{3}\t{4}\n".format(contig1,\
+                            self.orientedgraph[contig1][contig2][0],contig2,max(Counts),removed[contig1][contig2]))
+                        if final:
+                            Counts=self.readCounts(contig1,contig2,clean=True)
+                            network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
+                            '(0,1)',contig2,max(Counts)))
+                        done|=set([(contig1,contig2)]) #Add current pair
+                        done|=set([(contig1,contig2)[::-1]]) #Reverse of current pair
+        if not dirty:
+            with self.tryopen("{0}{1}".format("all","_nodes"),"Contig1\tContiglength\t\n",".txt",True) as nodes:
+                #print self.tiglen
+                for tig,length in self.tiglen.iteritems():
+                    nodes.write("{0}\t{1}\t\n".format(tig,length))
         return
-    def tryopen(self,filename,header,filetype):
+    def tryopen(self,filename,header,filetype,expunge=False):
         '''Looks for a file, if its not there, it makes the file, if
         it is there then it returns the opened file. Remember to close the file if you call this
         function or use: with tryopen(stuff) as morestuff.'''
@@ -193,6 +188,10 @@ class DataParser(object):
                 with open(filename+filetype,'w') as newfile:
                     newfile.write(header)
             elif os.path.isfile(filename+filetype):
+                if expunge:
+                    temp=open(filename+filetype,'w+')
+                    temp.write(header)
+                    temp.close()
                 return open(filename+filetype,'a+')
             return open(filename+filetype,'a+')
         except:
@@ -200,11 +199,29 @@ class DataParser(object):
             raise
         
     def stagestosif(self):
-        self.graphtosif(self.totalgraph,"Initial",dirty=True)
-        self.graphtosif(self.graph,"Threshold")
-        #self.graphtosif(self.finalgraph,"Cov_Links",final=True)
+        removed=self.notingraph(self.totalgraph,self.graph,"Initial","Threshold")
+        self.graphtosif(self.totalgraph,"Initial",removed,dirty=True)
+        removed=self.notingraph(self.graph,self.finalgraph,"Threshold","Cov_Links")
+        self.graphtosif(self.graph,"Threshold",removed)
+        self.graphtosif(self.finalgraph,"Cov_Links",final=True)
         return
-
+        
+    def notingraph(self,graph1,graph2,name1,name2):
+        removed={}
+        for key,item in graph1.iteritems():
+            removed[key]={}
+            for key2 in item:
+                if key in graph2:
+                    if key2 in graph2[key]:
+                        removed[key][key2]="False"
+                    else:
+                        removed[key][key2]="True"
+                else:
+                    removed[key][key2]="True"
+        return removed
+                        
+                            
+        
     def makegraph(self,connections=None,cleanedlinks=None,threshold=5,total=False,dirty=False):
         ''' Intent is to get the linksfile which has been scrubbed of reads
         with far to large insert, the dictionary of contigs and all tigs with at least one read.
@@ -251,15 +268,18 @@ class DataParser(object):
         makes a dictionary of Scaffold objects for scaffoldset'''
         Scaffolds={}
         isolated=self.lonetigs(Graph)
+        self.isolated=isolated
         for tig in isolated:
             #Add all contigs with no links as individual scaffolds
             #Also remove from both Graph and OrientedGraph
             Scaffolds["Scaffold"+str(len(Scaffolds))]={tig:[0,0,0,0,0]}
             del Graph[tig]
             del OrientedGraph[tig]
+
         #print Scaffolds
         #Now need to retrieve each scaffold with the order,gapsize,orientation
-        paths=self.makepathss(Graph,OrientedGraph)
+        paths,pathz=self.makepathss(Graph,OrientedGraph)
+        self.finalgraph=self.pathstograph(pathz) #Turns final paths back into a graph
         #Now unpacks the paths to make scaffolds
         for path in paths:
             scafname="Scaffold"+str(len(Scaffolds))
@@ -325,32 +345,70 @@ class DataParser(object):
         badedges={}
         connections={}
         paths=self.findpath(edges) #Makes the paths
+        pathz=paths #Storing for later use
         if type(paths[0])==list:
             paths=[self.tuplecollapse(x) for x in paths if x!=None]
         #print paths
-        return paths
+        return paths,pathz
+    def mergedicts(self,x,y):
+        '''Shouldn't overwrite values in x with those in y as
+        they shouldn't share any contigs and therefore do not share keys'''
+        z=x.copy()
+        z.update(y)
+        return z
+    def pathstograph(self,listofpaths):
+        ''' Loops over list of paths, makes a graph for each path and joins
+        with the final graph'''
+        finalgraph={}
+        for x in listofpaths:
+            finalgraph.update(self.edgestograph(x))
+        #print finalgraph
+        return finalgraph
         
     def edgestograph(self,edges):
         '''Creates a graph of each edge which access all linked edges'''
         Graph={}
         for edge in edges:
-            Graph[edge]=[]
+            if edge[0] not in Graph and edge[1] not in Graph:
+                Graph[edge[0]]=[edge[1]]
+                Graph[edge[1]]=[edge[0]]
+            elif edge[1] not in Graph:
+                Graph[edge[1]]=[edge[0]]
+            elif edge[0] not in Graph:
+                Graph[edge[0]]=[edge[1]]
+            else:
+                pass
             for edge2 in edges:
                 if edge2==edge:
                     pass
-                elif edge2[1] in edge or edge2[0] in edge:
-                    Graph[edge]=Graph[edge]+[edge2]
+                elif edge2[1] in edge:
+                    if edge2[1]==edge[0]:
+                        if edge2[0] not in Graph[edge[0]]:
+                            Graph[edge[0]]+=[edge2[0]]
+                    elif edge2[1]==edge[1]:
+                        if edge2[0] not in Graph[edge[1]]:
+                            Graph[edge[1]]+=[edge2[0]]
+                elif edge2[0] in edge:
+                    if edge2[0]==edge[0]:
+                        if edge2[1] not in Graph[edge[0]]:
+                            Graph[edge[0]]+=[edge2[1]]
+                    elif edge2[0]==edge[1]:
+                        if edge2[1] not in Graph[edge[1]]:
+                            Graph[edge[1]]+=[edge2[1]]
                 else:
-                    pass
+                    pass     
         return Graph
         
     def findpath(self,Graph):
         '''Keeps extending path until no more possible edges'''
         paths=[] #The current path being considered
-        doneedges=set([])
+        doneedges=set([]) #All previously considered edges
+        donetigs=set([])  #All previously considered contigs
         for edge in Graph:
             done=False
-            if edge not in doneedges:
+            if edge not in doneedges and edge[0] not in donetigs and edge[1] not in donetigs:
+                #Check if the edge has already been considered in this round and if the
+                #component contigs have been completely considered
                 path=[edge]
                 doneedges|=set([edge]) #Consider current tuple
                 doneedges|=set([edge[::-1]]) #Consider the reversed tuple
@@ -384,6 +442,10 @@ class DataParser(object):
                     else:
                         #print edge
                         done=True
+                #After finishing a path i.e no possible extensions
+                for tup in path:
+                    for tig in tup:
+                        donetigs|=set([tig])
                 paths.append(path)
         #print paths
         return paths
@@ -407,19 +469,26 @@ class DataParser(object):
             #print path,"This is the Path"
             return None
         #Need to add check against those reads in the path
+        covtest={} #Dictionary of coverage test results
         for edge in posedges:
+            covtest[edge]=[]
             if front:
                 #Note path[-1][1]==edge[0] by how the possible edges were decided
                 counts=self.readCounts(path[-1][0],edge[0],clean=True)
                 ori=self.linkorientation(counts.index(max(counts)))
-            elif front==False:
+                covtest[edge]+=[self.metabatprobtest(path[-1][0],edge[0])]
+            elif not front:
                 #path[0][0]==edge[1] by how possible edges are evaluated
                 counts=self.readCounts(edge[0],path[0][0],clean=True) #Reorder ensures orientation for later
                 ori=self.linkorientation(counts.index(max(counts)))
+                covtest[edge]+=[self.metabatprobtest(path[0][0],edge[0])]
             else:
                 pass
             if (front and ori==(0,1)) or (front==False and ori==(0,1)):
                 maxcounts.append((max(counts),edge))
+        #Whether any of the coverages are suitable for use in decision making
+        covaccept={key: [True  if x=='Accept'  else False for x in covtest[key]] for key in covtest}
+        covreject={key: [True if x=='Reject' else False for x in covtest[key]] for key in covtest}
         #maxcounts.append((max(self.readCounts(path,edge),
         if maxcounts!=[]:
             best=max(maxcounts)
@@ -429,13 +498,25 @@ class DataParser(object):
             return None
         #print maxcounts, "Here I am bugfixing"
         for count,tup in maxcounts:
-            if float(count)/best[0]>=threshold and (count,tup)!=best:
+            if float(count)/best[0]>=threshold and (count,tup)!=best and not covaccept[tup][0] and not covaccept[best[1]][0]:
                 print best, "Compared to",(count,tup)
                 nextcheck=False #Don't do the next check - failed first test
                 test1=False #Failed first threshold
-                #Loops over pssible edges and use the second metric to evaluate acceptability
-        #Won't include this in decision making for the moment
-        if nextcheck:
+            elif float(count)/best[0]>=threshold and (count,tup)!=best and covaccept[tup][0] and covaccept[best[1]][0]:
+                print best, "Compared to",(count,tup)
+                nextcheck=False #Don't do the next check - failed first test
+                test1=False #Failed first threshold
+            elif float(count)/best[0]>=threshold and (count,tup)!=best and not covaccept[tup][0] and covaccept[best[1]][0]:
+                #If the current best option passes the covtest but possible edge does not
+                #print ""
+                pass 
+            elif float(count)/best[0]>=threshold and (count,tup)!=best and covreject[tup][0] and not covreject[best[1]][0]:
+                #If coverage indicates the current pair shouldn't be considered, don't consider breaking the threshold a failure
+                pass
+            else:
+                #print "It does not appear that coverage brought me here"
+                pass
+        if nextcheck: #Sequence space analysis - SSPACE-like decision 2
             spaceperlink=[]
             for edge in posedges:
                 if front:
@@ -447,38 +528,33 @@ class DataParser(object):
             biggest=max(spaceperlink)
             bigind=spaceperlink.index(biggest)
             ratios=[x/float(biggest) for i,x in enumerate(spaceperlink) if i!=bigind] #Look at all ratios but biggest/biggest
+            
             if ratios!=[]:
                 if max(ratios)>=threshold: #Second decision point
                     test2=False
-            else:
-                test2=False
-        elif not nextcheck:
-            test2=False
         #Now for coverage based method
         #merge in above loop for 2nd sspace later
-        for edge in posedges:
-            covtests=[]
-            if front:
-                covtests+=[self.metabatprobtest(path[-1][0],edge[0])]
-            elif front==False:
-                covtests+=[self.metabatprobtest(path[0][0],edge[0])]
-        accept=[True  if x=='Accept'  else False for x in covtests]
-        reject=[True if x=='Reject' else False for x in covtests]
+
         #print "These are the accept values",accept
         #print "These are the reject values", reject
         if test1 and test2: #Pass both SSPACE tests
-            return best[1]
+            #print "The coverage accept values", covaccept
+            #print "The coverage reject values", covreject
             #print "SSPACE-like accept"
+            return best[1]
         else:
             #print "SSPACE-like rejection"
-            pass
+            #print posedges
+            #print path
+            #print "test1",test1,"test2",test2
+            return None
         ###Now need to check if edge satisfies coverage - red false +ve
         #If one is rejection Could recalc for the next biggest no. links
         #Could increase true +ve and dec false -ve - might be a mistake to include
         #Could also inc false +ve
         #print path,"This is the Path for too many competing options"
+        print "You shouldn't get here", best, '\n',covaccept,covreject
         return best[1]
-        
     def seqspace(self,tig1,tig2):
         ''' The second SSPACE-like step. Here the 'sequence space' is formed in the manner described
         by SSPACE and comparisons are made. This works by deeming the searched sequence space as being
@@ -524,8 +600,6 @@ class DataParser(object):
     def dubtuple(self,tup1,tup2):
         ''' Takes in a pair of tuples and then decides how to join them
         on a shared edge. Eg, join (B,A) and (D,B) => (D,A,B)'''
-        #print "This is the first tuple for the bug fix", tup1
-        #print "This is the second tuple for the bug fix", tup2
         eletup1=set(tup1)
         eletup2=set(tup2)
         if tup1[-1]==tup2[0]:
@@ -549,7 +623,7 @@ class DataParser(object):
     def flipdec(self,linkdirs):
         ''' Return tuple indicating how a pair of linked
         contigs should be arranged based on their read orientations'''
-        flipsequence=False
+        flipplace=False
         or1,or2=linkdirs
         or1=int(or1)
         or2=int(or2)
@@ -614,15 +688,22 @@ class DataParser(object):
         with the processed scaffolds(with gap estimate and proper orientation).
         It will also call all of the scaffolds to print to the scaffold file.'''
         self.cleanlinks() #Cleans the obviously erroneous mappings
+        print "Links have been cleaned"
         OrientedGraph,Graph=self.makegraph() #Makes initial connections with no.reads>threshold
+        print "This initial graph has been made"
+        #Should also make the cleaned up graph here
+        #print self.graph, "This should be the first stage in cleaning"
         self.writesometigs()
         self.makescaffolds(Graph,OrientedGraph) #Makes set of scaffolds
+        print "The scaffolds are now done"
         self.printscaffolds()
+        print "The scaffolds have been printed"
         self.gapprint()
-        #~ print "This is the new code"
+        print "The gaps have been printed"
         self.totalgraph=self.makegraph(connections=self.completecheck(self.links),\
         cleanedlinks=self.links,threshold=0,dirty=True)[-1]
         self.stagestosif()
+        print "The sif/network type files for cytoscape have been completed"
 
     def printscaffolds(self,filename='testScaffold'):
         try:
@@ -668,6 +749,10 @@ class DataParser(object):
         return singletigs
 
     def gapest(self,contig1=False,contig2=False,cleanedlinks=None,bamnames=None,default=False,final=False):
+        '''Takes in the cleaned links and then uses them to estimate the gap between two contigs
+        in the manner presented in Sahlini et al. 2012. There are issues where if the gap
+        is too large compared to the insert size then the gapestimator is not effective. This
+        is covered by testing for conditions where the estimator would fail and putting in a default value.'''
         if cleanedlinks==None:
             cleanedlinks=self.cleanedlinks
         if bamnames==None:
@@ -692,16 +777,14 @@ class DataParser(object):
         #Data
         #observations=fsomething(cleanedlinks)
         nullscaf=Scaffold({},'Null',self.contigloc)
-        meaninsert={}
-        stdinsert={}
-        for name in bamnames:
-            #Should give unique insert mean and insert std
-            meaninsert[name]=[x[1] for x in self.inserts if name+".bam" in x]
-            stdinsert[name]=[x[2] for x in self.inserts if name+".bam" in x]
+        meaninsert=self.mean
+        stdinsert=self.std
         observations=[self.lowerdist(x) for x in cleanedlinks if (contig1 in x) and (contig2 in x)]
         #print observations
         r=self.readlen #read length
         m=3 #Arbitrary tolerance level
+        #print stdinsert
+        #print meaninsert
         sigma=[float(stdinsert[x][0]) for x in stdinsert] #sd of insert library
         mu=[float(meaninsert[x][0]) for x in meaninsert]#Mean of insert library
         l=10 #smallest correct gap expected to see
@@ -827,19 +910,6 @@ class DataParser(object):
         ML_value=self.fd(cmin,cmax,r,d,mu,sigma)
         prior_value=sigma**2*(1/(1-norm.cdf(d,mu,sigma))*norm.pdf(d,mu,sigma))
         return ML_value+prior_value
-    
-    def CoverageCheck(self,contig1,contig2):
-        from scipy.special import erf
-        from scipy.stats import norm
-        from scipy.constants import pi
-        from math import exp
-        #Approximate the coverage as a normal distribution with mean mu
-        #and stdDev sigma.
-        #Then the probability that two given contigs are not from the same genome
-        #based on covrage is the |norm.cdf(x)-
-        #Cumulative Density function for the normal distribution norm.cdf(x)
-        return
-
 
     def metabatprobtest(self,contig1,contig2,lower=0.01,upper=0.95):
         pairs=self.gettigcov(contig1,contig2)
@@ -851,6 +921,10 @@ class DataParser(object):
             if 0 not in repack[1]:
                 prob*=self.distancecalc(repack[0],repack[1])
                 j+=1
+            if 0 in repack[1]: #Conservative method
+                #For dealing with probabilities
+                prob*=1
+                j+=1 
         prob=prob**(1/float(j)) #Geometric mean of probabilities
         #Make a decision based on the probabilties
         if prob<=lower:
@@ -870,9 +944,8 @@ class DataParser(object):
         pairs=zip(covs[contig1],covs[contig2])
         return pairs
             
-
     def gapprint(self):
-        print "CAN YOU HEAR ME UP THERE"
+        #print "CAN YOU HEAR ME UP THERE"
         import os
         if not os.path.isfile("Gapdata.txt"):
             with open("Gapdata.txt",'w') as Gaps:
@@ -895,9 +968,6 @@ class DataParser(object):
         self.scafsum()
         return
         
-    def networkvis(self):
-        return
-        
     def distancecalc(self,means,var,tol=10**(-9)):
         ''' sums the difference in probability density between theorectical
         coverage distributions untill changes are less than some predefined tolerance''' 
@@ -911,8 +981,8 @@ class DataParser(object):
         i=0
         change=1
         while abs((change))>tol or i<max(means)+100: # or i<max(means)
-            if i==max(means)-1:
-                print "Leaving the loop soon"
+            #if i==max(means)-1:
+                #print "Leaving the loop soon"
             change=abs(norm.pdf(i,loc=means[0],scale=sqrt(var[0]))-norm.pdf(i,loc=means[1],scale=sqrt(var[1])))
             dist+=change
             i+=1
@@ -921,6 +991,6 @@ class DataParser(object):
         
     def writesometigs(self):
         with open('ExtractionList.fna','w') as extract:
-            for tig in self.contignames[len(self.contignames)/2:]:
+            for tig in self.contignames:
                 extract.write(">{0}\n".format(tig))
         return

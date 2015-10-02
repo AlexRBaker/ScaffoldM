@@ -49,6 +49,7 @@ import argparse
 from dataloader import DataLoader
 from dataparser import DataParser
 from scaffold import Scaffold
+import datetime
 ###############################################################################
 if __name__ == "__main__": ###Check if arguments coming in from command line
     parser = argparse.ArgumentParser(description='CreateNewContigs.')
@@ -81,18 +82,22 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     covnames=args.covs
     insertnames=args.inserts
     libnos=args.librarynumber
-    libnos=[str(ele) for ele in libnos]
+    if type(libnos)!=int:
+        libnos=[str(ele) for ele in libnos]
     print libnos
     print args
     #print "Looking for a bug", os.getcwd()
+    start=datetime.datetime.now().time()
     ##Loads up the bams and passes them onto BamM to get links, coverage etc.
+    print "Loading the Data"
     data=DataLoader(bamnames,
                  contigloc,
                  libno=libnos,
                  linksname=linksnames,
                  covname=covnames,
                  insertname=insertnames)
-    print data.bamnames, "THese are the bamnames"
+    #print data.bamnames, "THese are the bamnames"
+    #
     ###Note dataparser will have inside it all the scaffolds made from the data.
     parser=DataParser(data.links,
                             data.coverages,
@@ -102,8 +107,12 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
                             data.contigloc,
                             data.tiglen)
     #Tells the parser to process the data
+    print "Onto parsing the data"
     parser.parse()
-    #parser.output() #Prints some summary information used in quality assessments.
+    end=datetime.datetime.now().time()
+    with open('time.txt','w') as time:
+        time.write('StartingTime:{0}\nEndingTime:{1}'.format(start,end))
+    #parser.output() #Prints some summary info rmation used in quality assessments.
     #namely gap sizes and a scaffold summary file for easy parsing.
     
     ###Visualise will include some coverage based graphs,

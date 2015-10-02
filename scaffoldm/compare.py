@@ -342,8 +342,82 @@ def Visualise(scaffoldnames,gaps,contigloc,covplot=False):
         for scaffold in scaffoldnames:
             plotcoverage(scaffold)
     return
-    
 
+def contigmap(evidencefile,coveragefile='covs.tsv'):
+    Scaffolds={}
+    with tryopen(evidencefile,'','.evidence') as SSPACE:
+        for line in SSPACE:
+            if line.startswith(">"):
+                parts=line.split('|')
+                scaffold=line[0].strip('>')
+                Scaffolds[scaffold]=[]
+            else:
+                parts=line.split('|')[0] #tig name - in form f_tign
+                Scaffolds[scaffold]+=parts
+    with tryopen(coveragefile,'','') as covs:
+        covs.readline() #Move paste header
+        orderedtigs=[]
+        for line in covs:
+            orderedtigs+=line.split('\t')[0] #Contig name
+    N_tigs=len(orderedtigs) #Number of contigs
+    #map f_tigi to orderedtigs[i] in dictionary
+    Swapdict={"{0}{1}".format('f_tig',i):orderedtigs[i-1] for i in range(1,N_tigs+1)}
+    Mapped={scaffold:[Swapdict[x] for x in Scaffolds[scaffold]] for scaffold in Scaffolds}
+    return Mapped
+def scaftograph(scaf):
+    ''' Turns dict of form {key:list_edges,key2:list_edges2} into
+    a dict of {edge1:connectededges,edge2:connectededges}'''
+    graph={}
+    for scaffold,edges in scaf.iteritems():
+        for i,edge in enumerate(edges):
+            if edge not in graph:
+                graph[edge]=[]
+            if i<len(edges)-1:
+                graph[edge]+=[edges[i+1]]
+    return graph
+
+def graphtosif(self,graph,graphname,removed=False):
+    #print graphname, "This is the supposed graph being parsed"
+    #print "\n",graph
+    done=set([])
+    with tryopen("{0}{1}".format(graphname,"_links"),"Contig1\tRelationship\tContig2\n",".txt",True) as network2:
+        for contig1,connected in graph.iteritems():
+            for contig2 in connected:
+                if (contig1,contig2) not in done and (contig2,contig1) not in done:
+                    network2.write("{0}\t{1}\t{3}\n".format())
+                    done|=set([(contig1,contig2)]) #Add current pair
+                    done|=set([(contig1,contig2)[::-1]]) #Reverse of current pair
+    with tryopen("{0}{1}".format(graphname,"_contigs"),"Contig\n",".txt") as contigs:
+        for contig in graph:
+            contigs.write("{0}".format(contig))
+    return
+def addcol(filename,column_s,header,d='\t'):
+    '''Takes a text file containing tab separated columns and adds tab-separated columns
+    to the end. This is primarily for updating the .txt files using in Cytoscape with additional
+    info such as bin allocation etc. Loads whole file into memory.'''
+    with tryopen(filename,'','') as oldfile:
+        olf=oldfile.readlines()
+        Newfile=[]
+        for i,line in enumerate(olf):
+            if i==0:
+                processedline=[x.rstrip('\n') for x in line.split('\t')]
+                processedline+=[head for head in header]
+                processedline[-1]=processedline[-1]+"\n"
+                Newfile+=processedline
+            else:
+                processedline=[x.rstrip('\n') for x in line.split('\t')]
+                processedline+=[column[i] for column in column_s]
+                processedline[-1]=processedline[-1]+"\n" #Add endline
+                Newfile+=processedline
+    with tryopen(filename,'','',True) as newfile:
+        for line in Newfile:
+            newfile.write(("{0}".format(d)).join(line))
+    return
+        
+def sspaceconvert(evidencefile,coveragefile='covs.tsv'):
+    Mapped=contigmap(evidencefile,coveragefile='covs.tsv')
+    Final=scaftograph(Mapped)
+    return Final
     
 def plotcoverage(name):
     return
@@ -356,9 +430,6 @@ def standardplot(x,y,xname,yname,title,saveloc,log=False):
     plt.xlabel(xname)
     plt.ylabel(yname)
     plt.title(title)
-    #plt.xticks([i for i in range(int(min(round(min(x),-1),round(min(y),-1))),int(max(round(max(x),-1)+10,round(max(y),-1)+10)),30)])
-    #plt.yticks([i for i in range(int(round(min(y),-1)),int(round(max(y),-1)+10),30)])
-    #plt.axis([min(min(x),min(y)),max(x)+2,min(y)-50,max(y)+20])
     plt.savefig('./graphs/'+saveloc+'.png',bbox_inches='tight')
     plt.close()
     return
@@ -608,6 +679,161 @@ def contiglen(contigloc):
         raise      
 def writeout(data):
     return
+def postprocess(sifloc,trueloc,final=False):
+    with tryopen(trueloc,'','.txt') as correct:
+        correct.readline() #Move past header
+        Truescaf={}
+        for line in correct.readlines():
+            curline=line.split('\t')
+            if curline[0] not in Truescaf:
+                Truescaf[curline[0]]=[]
+            if curline[1].rstrip('\n') not in Truescaf:
+                Truescaf[curline[1].rstrip('\n')]=[]
+            if curline[1].rstrip('\n') not in Truescaf[curline[0]]:
+                Truescaf[curline[0]]+=[curline[1].rstrip('\n')]
+            if curline[0] not in Truescaf[curline[1].rstrip('\n')]:
+                Truescaf[curline[1].rstrip('\n')]+=[curline[0]]
+    Newdata=[]
+    with tryopen(sifloc,'','.txt') as olddata:
+        if not final:
+            header=olddata.readline().translate(None,'\n')+"\tTrueEdge\tDecision\n"
+        else:
+            header=olddata.readline().translate(None,'\n')+"\tTrueEdge\n"
+        for line in olddata.readlines():
+            curline=line.split('\t')
+            tig1=curline[0]
+            tig2=curline[2]
+            if tig1 in Truescaf:
+                if tig2 in Truescaf[tig1]:
+                    TrueEdge="True"
+                else:
+                    TrueEdge="False"
+            else:
+                TrueEdge="False"
+            if not final:
+                remove=curline[4].rstrip('\n')
+                print remove
+                if remove=="True" and TrueEdge=="True":
+                    Decision="FalseNeg"
+                elif remove=="True" and TrueEdge=="False":
+                    Decision="TrueNeg"
+                elif remove=="False" and TrueEdge=="True":
+                    Decision="TruePos"
+                elif remove=="False" and TrueEdge=="False":
+                    Decision="FalsePos"
+                Newdata+=[[x.rstrip('\n') for x in curline]+[TrueEdge]+[Decision]]
+            else:
+                Newdata+=[[x.rstrip('\n') for x in curline]+[TrueEdge]]
+            
+    with tryopen(sifloc,header,'.txt',True) as final:
+        for line in Newdata:
+            final.write("{0}\n".format("\t".join(line)))
+    return
+
+def totprocess(sifloc1,sifloc2,sifloc3,trueloc="TrueEdges"):
+    postprocess(sifloc1,trueloc,False)
+    postprocess(sifloc2,trueloc,False)
+    postprocess(sifloc3,trueloc,True)
+    return
+    
+def maketrueedges():
+    '''Assumes that contigslices file is both ordered by position withiin each species
+    and by species'''
+    TrueEdges=[]
+    with tryopen("covs",'','.tsv') as covs:
+        i=1
+        prevtig=False
+        curtig=False
+        donetigs=[]
+        TrueEdge=[]
+        covs.readline() #Move past header
+        for line in covs:
+            prevtig=curtig
+            curtig=line.split('\t')[0]
+            #print "This is the current Contig", curtig
+            #print "This is the current line", line.split('\t')[0]
+            tignumber='{0}{1}'.format('tig',i)
+            if tignumber in curtig:
+                i+=1
+                if tignumber in donetigs:
+                    donetigs=[]
+                    i=2
+                elif prevtig!=False:
+                    TrueEdge+=[(prevtig,curtig)]
+                    donetigs+=[tignumber]
+            else:
+                i=2
+                donetigs=[]
+                #print tignumber
+                #print curtig
+            
+
+    with tryopen("TrueEdges",'contig1\tcontig2\n','.txt',True) as Edge:
+        for edge in TrueEdge:
+            #print edge
+            Edge.write("{0}\t{1}\n".format(edge[0],edge[1]))      
+    return
+def binstotxt(checkdir,fileend='.fa'):
+    import os
+    files=os.listdir(checkdir)
+    bins=[File for File in files if File.endswith('.fa')] #Should get those with .fa in name
+    binpaths=[os.path.join(checkdir,binfile) for binfile in bins]
+    contigbinmap={}
+    for i,binloc in enumerate(binpaths):
+        contigbinmap[bins[i].strip(fileend)]=getfastaheaders(binloc) #Maps the set of contigs in
+        #bin file to that bin in a graph
+    return contigbinmap
+    
+def writelis(filename,header,rows):
+    with tryopen(filename,header,'') as newfile:
+        for row in rows:
+            newfile.write("\t".join(row)+"\n")
+    return
+        
+def binwrapper(writedir,filename,checkdir,fileend='.fa'):
+    import os
+    bins=binstotxt(checkdir,fileend)
+    rows=[(item,key) for key,items in bins.iteritems() for item in items]
+    columns=zip(rows)
+    writelis(os.path.join(writedir,filename),"Contig\tBin\n",rows)
+
+def getfastaheaders(filename):
+    try:
+        Names=[]
+        with tryopen(filename,'','') as fasta:
+            for line in fasta:
+                if line.startswith('>'):
+                    #print line
+                    Names+=[line.strip('>').rstrip('\n')]
+                else:
+                    pass
+        return Names
+    except:
+        raise
+        
+def screenbins(binsfile,contamlevel, completeness):
+    
+    return
+def tryopen(filename,header,filetype,expunge=False):
+    '''Looks for a file, if its not there, it makes the file, if
+    it is there then it returns the opened file. Remember to close the file if you call this
+    function or use: with tryopen(stuff) as morestuff.'''
+    import os
+    try:
+        if not os.path.isfile(filename+filetype):
+            with open(filename+filetype,'w') as newfile:
+                newfile.write(header)
+        elif os.path.isfile(filename+filetype):
+            if expunge:
+                temp=open(filename+filetype,'w+')
+                temp.write(header)
+                temp.close()
+            return open(filename+filetype,'a+')
+        return open(filename+filetype,'a+')
+    except:
+        print "Either could not create or open the file"
+        raise
+        
 def makeboolean(string):
         Val_T=("true",'t','1','yes')
         Val_F=("false","f",'0','no')
@@ -627,8 +853,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     import os
     import sys
     import datetime
-    parser = argparse.ArgumentParser(description='Takes a Genome in Fasta format and while then parse it into predefined chunks and \
-     create reads based on the overarching segments of the genome being used, inclduing the gaps\
+    parser = argparse.ArgumentParser(description='Takes a Genome in Fasta format and then parse it into predefined chunks\
      These reads and gaps are then parsed to both SSPace and ScaffoldM which then have there output extracted and compared.\
      These comparisons have formed the basis for improvements on ScaffoldM.')
 
@@ -676,6 +901,9 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     parser.add_argument('-Tig','--tigname',type=str,nargs='?',
     help='Name of Fasta file for mapping',default="mergedslices.fasta")
     args = parser.parse_args()
+    parser.add_argument('-Rsim','--simreads',type=str,nargs='?',
+    help='Name of Fasta file for mapping',default=False)
+    args = parser.parse_args()
     ###Stuff for Simulation
     sim=makeboolean(args.sim) #Whether or not to simulate
     path=args.path #path to sspace
@@ -706,6 +934,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     seqlen=getfastalen(Name) #Approximate length of the genome
     bams=args.bams #name of bams
     contigname=args.tigname #name of fasta file
+    simreads=makeboolean(args.simreads)
     #STuff for all comparisons
     
     if sim:
@@ -727,8 +956,6 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
         os.chdir(postname+"cuts_S:{0}_E:{1}".format(start,end))
         slicename,completename=slicer(slices,Name)
         #Make reads via metasim
-        
-        simreads=False
         if simreads:
             readnumber=coverage*(end-start)/readlength
             makereadswrap(readnumber,readlength,meaninsert,stdinsert,\
@@ -737,7 +964,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
             completename=completename.split(".fna")[0]
             file1,file2=splitter(completename+"-Empirical")
         else:
-            print os.getcwd()
+            #print os.getcwd()
             file1='{0}/{1}-Empirical_1'.format(refpath,postname)
             file2='{0}/{1}-Empirical_2'.format(refpath,postname)
             completename=newname
@@ -745,42 +972,65 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
         #Make libraries.txts
         makelibrary("library",['Lib1'], [file1],[file2],[meaninsert],[error],orientation=['FR'])
     else:
+        contigloc=contigname
         pass
     #To separate from SIM - needs a library file
     #perl SSPACE_Basic.pl -l libraries.txt -s contigs.fasta -x 0 -m 32 -o 20 -t 0 -k 5 -a 0.70 -n 15 -p 0 -v 0 -z 0 -g 0 -T 1 -b standard_out
-    mapreads=False
+    mapreads=True
     if mapreads:
-        print "SSPACE", slicename, "The contig file"
+        print "SSPACE", contigloc, "The contig file"
+        print "perl {4} -l {0} -s {1} -x 0 \
+         -k {2} -a {3} -b standard_out"\
+         .format("library.txt",contigloc,linklimit,ratio,path)
         os.system("perl {4} -l {0} -s {1} -x 0 \
          -k {2} -a {3} -b standard_out"\
-         .format("library.txt",slicename,linklimit,ratio,path))
+         .format("library.txt",contigloc,linklimit,ratio,path))
         print "Onto BamM"
         if sim:
             os.system("bamm make -d {0} -i {1} --quiet".format(slicename,completename+"-Empirical.fna"))
             libno=[str(ele) for ele in libno]
             librarynumbers=' '.join(libno)
             bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",postname)+"-Empirical"
-        else:
-            libno=[str(ele) for ele in libno]
-            librarynumbers=' '.join(libno)
-            bamname="{0}{1}{2}".format(slicename.split(".fna")[0],".",completename)+"-Empirical"
-        print bamname
-        contigname=slicename
-        print datetime.datetime.now().time().isoformat()
+            contigname=slicename
+    print "The current time: ", datetime.datetime.now().time().isoformat()
+    if type(bams)!=str: #Check if default is being used
+        libno=[str(ele) for ele in libno]
+        librarynumbers=' '.join(libno)
+        print "The Bams", ' '.join(bams)
+        os.system("python {0}wrapper.py -b {1} -f {2} -n {3}".format(wrapperpath,' '.join(bams),contigname,librarynumbers))
+        real=True
+        if not real:
+            maketrueedges()
+            totprocess("Initial_links","Threshold_links","Cov_Links_links")
+        #print os.getcwd()
+        if os.path.isdir('./standard_out'): #Only go if SSPACE worked
+            SSPACEgraph=sspaceconvert("./standard_out/standard_out.final")
+            graphtosif(SSPACEgraph)
+        binned=True
+        if binned:
+            binwrapper('.','Node_BinClass.txt','bins_raw/')
+            print "You made it pass checking the nodes"
+        #Separate those with high enough completeness/quality scores
+        #Visualise the remaining
+        #Work out how to colour based on this in cytoscape
+        #Bam, done, can compare into and out of binning occurrences
+        print "This is the real end now"
+    elif sim: #Should only occur on defaults
         os.system("python {0}wrapper.py -b {1} -f {2} -n {3}".format(wrapperpath,bamname,contigname,librarynumbers))
-        print "You made it to the end"
+        maketrueedges()
+        totprocess("Initial_links","Threshold_links","Cov_Links_links")
+        print "This is the real end now"
+    comparisons=False
+    if comparisons:
+        #Make some comparisons between SSPACE and ScaffoldM
         os.mkdir('graphs')
-        #print slicename
         Visualise([slicename,"testScaffold.fasta","./standard_out/standard_out.final.scaffolds.fasta"],\
         [int(slices[i+4])-int(slices[i+1]) for i in range(0,len(slices)-4,4)],contigloc)
         if sim:
             print "You made it to the link error extractions"
-            print os.getcwd()
             extracttigs(contigloc=slicename)
         else:
             pass
-    if type(bams)!=str: #Check if default is being used
-        libno=[str(ele) for ele in libno]
-        librarynumbers=' '.join(libno)
-        os.system("python {0}wrapper.py -b {1} -f {2} -n {3}".format(wrapperpath,' '.join(bams),contigname,librarynumbers))
+
+        
         

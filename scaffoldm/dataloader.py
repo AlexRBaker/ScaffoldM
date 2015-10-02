@@ -115,7 +115,7 @@ class DataLoader(object):
             print 'Error using bamm'
 
         #[1:] to remove header
-        print os.getcwd()
+        #print os.getcwd()
         self.contigNames=list(set([x for x in self.getcolumn(self.parsetsv(covname)[1:],[0])]))
         #Using [1:] to remove header
         self.links=self.parsetsv(linksname)[1:]
@@ -137,7 +137,7 @@ class DataLoader(object):
         import os
         import csv
         try:
-            print os.getcwd()
+            #print os.getcwd()
             with open(textfile) as tsv:
                 return [line for line in csv.reader(tsv,delimiter="\t")]
         except:
