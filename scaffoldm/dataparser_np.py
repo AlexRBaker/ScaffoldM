@@ -36,6 +36,7 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 import scaffold
 import numpy as np
+import pandas as pd
 ###############################################################################
 #Notes for possible conversion to numpy
 class DataParser(object):
@@ -72,7 +73,11 @@ class DataParser(object):
         self.tiglen=tiglen
         self.readlen=readsize
         self.gaps={}
-
+    def tigin(self,contig1,linksfile):
+        '''Uses numpy vectorised functions to check if a contig
+        is present in a linksfile'''
+        return np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1)
+        
     def readCounts(self,contig1,contig2,linksfile=None,clean=False):
         '''Gets the number of links between two contigs
         in each of 4 orientations, (0,1),(1,0),(1,1),(0,0)
@@ -87,20 +92,26 @@ class DataParser(object):
         tig2ind=np.where(linksfile[0]==contig2)[0][0]
         #Now maintains appropiate order, if refering to contigs in seperate arrangements
         #This is since index determines if x[4] refers to read of tig 1 or tig 2.
+        norm=len(linksfile[np.logical_and(linksfile[:,4]=='1',linksfile[:,7]=='0'),0])
         if tig1ind<tig2ind: #Checks how the contig1 versus contig2 are place in readsfile
-            norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
-            rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
+            norm=len(linksfile[np.logical_and(linksfile[:,4]=='1',linksfile[:,7]=='0'),0])
+            #norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
+            rev=len(linksfile[np.logical_and(linksfile[:,4]=='0',linksfile[:,7]=='1'),0])
+            #rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
         elif tig2ind<tig1ind:
-            norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
-            rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
+            norm=len(linksfile[np.logical_and(linksfile[:,4]=='0',linksfile[:,7]=='1'),0])
+            #norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='1')])
+            rev=len(linksfile[np.logical_and(linksfile[:,4]=='1',linksfile[:,7]=='0'),0])
+            #rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
         else:
             norm=0
             rev=0
             print "How is this possible? contig1!=contig2"
-        posinvc2=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='1')])
-        posinvc1=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='0')])
-        total=norm+rev+posinvc2+posinvc1
-        return [norm,rev,posinvc2,posinvc1]
+        posinvc2=len(linksfile[np.logical_and(linksfile[:,4]=='1',linksfile[:,7]=='1'),0])
+        posinvc1=len(linksfile[np.logical_and(linksfile[:,4]=='0',linksfile[:,7]=='0'),0])
+        #posinvc2=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='1')])
+        #posinvc1=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='0' and x[7]=='0')])
+        return np.array([norm,rev,posinvc2,posinvc1],dtype=int)
     def getlinks(self,contig1,contig2=False,linksfile=None,clean=False,bam=False):
         '''Retrieves every link entry for one contig for every link 
         between two contigs'''
@@ -114,16 +125,16 @@ class DataParser(object):
                 if bam==False:
                     Links=linksfile[np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1),:]
                 else:
-                    Links=linksfile[np.logical_and(np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1)\
-                    ,linksfile[:,8]==bam),:]
+                    Links=linksfile[np.logical_and(np.logical_and(np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1)\
+                    ),linksfile[:,8]==bam),:]
             else:
                 if bam==False:
                     Links=linksfile[np.logical_and(np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1),\
                     np.logical_or(linksfile[:,0]==contig2,linksfile[:,1]==contig2)),:]
                 else:
-                    Links=[row for row in linksfile if (contig1 in row) and (contig2 in row) and (bam in row)]
-                    Links=linksfile[np.logical_and(np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1),\
-                    np.logical_or(linksfile[:,0]==contig2,linksfile[:,1]==contig2),linksfile[:,8]==bam),:]
+                    #Links=[row for row in linksfile if (contig1 in row) and (contig2 in row) and (bam in row)]
+                    Links=linksfile[np.logical_and(np.logical_and(np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1),\
+                    np.logical_or(linksfile[:,0]==contig2,linksfile[:,1]==contig2)),linksfile[:,8]==bam),:]
                     #check if both contigs and desired bamfile
             if len(Links)>0:
                 return Links
@@ -132,23 +143,50 @@ class DataParser(object):
         except TypeError:
             print "Contig1 must be string, contig2 can be ither False or a string"
             
-    def checklinks(self,contig1,linksfile=None):
-        '''Checks all contigs linked to the specified contig
-        and return a list of these contigs.
-        '''
-        links=self.getlinks(contig1,False,linksfile,clean=True)
-        if isinstance(links,type(None)):
-            return None
-        notcontig1=set(links[links[:,0]!=contig1,0])
-        nottig1=set(links[links[:,1]!=contig1,1])
-        return list(nottig1|notcontig1)
+    #~ def checklinks(self,contig1,linksfile=None,clean=True):
+        #~ '''Checks all contigs linked to the specified contig
+        #~ and return a list of these contigs.
+        #~ '''
+        #~ links=self.getlinks(contig1,False,linksfile,clean)
+        #~ if isinstance(links,type(None)):
+            #~ return None
+        #~ return list(np.unique1d(pd.unique(links[links[:,1]!=contig1,1]),pd.unique(links[links[:,0]!=contig1,0])))
 
-    def completecheck(self,cleanedlinks=None):
+    def completecheck(self,cleanedlinks=None,clean=True):
         '''Uses CheckLinks to Construct all a dictionary with a key for each contigs
         which contains all contigs to which they are linked.'''
+        ###Appears to be drastically faster
         connections={}
-        for contig in self.contignames:
-            connections[contig]= self.checklinks(contig,cleanedlinks)
+        if clean:
+            links=self.cleanedlinks
+        else:
+            links=self.links
+        tigs1=links[links[:,0].argsort(),0:2] #indices to order first column
+        tigs2=links[links[:,1].argsort(),0:2] #Indices to order second column
+        splittigs1=np.vsplit(tigs1,np.unique(tigs1[:,0],return_index=True)[1]) #array split by first col
+        splittigs2=np.vsplit(tigs2,np.unique(tigs2[:,1],return_index=True)[1]) #Array split by second col
+        for array in splittigs1: #Should be ~38000 in ratdata
+            if np.size(array)>0:
+                key=pd.unique(array[:,0]) #Should be one contig
+                if len(key)==1:
+                    key=key[0] #Should now be the string
+                else:
+                    print "Dunno what happened here"
+                if key not in connections:
+                    connections[key]=pd.unique(array[:,1]) #Get all unique linked tigs
+                elif key in connection:
+                    connections[key]=np.union1d(connections[key],pd.unique(array[:,1]))
+        for array in splittigs2:
+            if np.size(array)>0:
+                key=pd.unique(array[:,0])
+                if len(key)==1:
+                    key=key[0] #Should now be the string
+                else:
+                    print "Dunno what happened here"
+                if key not in connections:
+                    connections[key]=pd.unique(array[:,1]) #Get all unique linked tigs
+                elif key in connection:
+                    connections[key]=np.union1d(connections[key],pd.unique(array[:,1]))
         return connections
         
     def graphtosif(self,graph,graphname,removed=True,dirty=False,final=False):
@@ -234,8 +272,10 @@ class DataParser(object):
         This will be used to construct a graph, each contigs will be a node, it will join other contigs
         if it passed the threshold number
         '''
-        if isinstace(connections,type(None)):
-            connections=self.completecheck()
+        if isinstance(connections,type(None)):
+            print "Creating connection"
+            connections=self.completecheck(clean=not dirty)
+            print "Finished making connections"
         Graph={}
         for contig1 in connections:
             Graph[contig1]=[]
@@ -243,14 +283,12 @@ class DataParser(object):
                 pass
             else:
                 for contig2 in connections[contig1]:
-                    if not dirty:
-                        Counts=self.readCounts(contig1,contig2,clean=True)
-                    elif dirty:
-                        Counts=self.readCounts(contig1,contig2,clean=False)
+                    Counts=self.readCounts(contig1,contig2,clean= not dirty)
                     #x==max(Counts) covers case of competing link orientations between two of the same
                     #contigs - default is to the the one with most in that orientation.
-                    index=[i for i,x in enumerate(Counts) if (x==max(Counts)) and (x>=threshold)]
-                    if index==[]:
+                    index=np.arange(len(Counts))
+                    index=index[np.logical_and(Counts>=threshold,Counts==max(Counts))]
+                    if len(index)==0: #No counts were suitable
                         pass
                     elif len(index)>0:
                         Graph[contig1]+=[contig2]
@@ -407,7 +445,8 @@ class DataParser(object):
                 doneedges|=set([edge[::-1]]) #Consider the reversed tuple
                 if len(path)==1: #Force a orientation consideration on starting pair
                     counts=self.readCounts(edge[0],edge[1],clean=True)
-                    index=counts.index(max(counts))
+                    index=np.arange(len(Counts))
+                    index=index[np.logical_and(Counts>=threshold,Counts==max(Counts))]
                     orientation=self.linkorientation(index)
                     start=True
                     if orientation==(1,0):
@@ -682,26 +721,30 @@ class DataParser(object):
         return
         
     def parse(self):
+        import datetime
         '''links all functions to start from the DataParser input and to end
         with the processed scaffolds(with gap estimate and proper orientation).
         It will also call all of the scaffolds to print to the scaffold file.'''
         self.cleanlinks() #Cleans the obviously erroneous mappings
         print "Links have been cleaned"
+        print datetime.datetime.now().time()
         Graph=self.makegraph() #Makes initial connections with no.reads>threshold
         print "This initial graph has been made"
-        #Should also make the cleaned up graph here
-        #print self.graph, "This should be the first stage in cleaning"
-        #self.writesometigs()
+        print datetime.datetime.now().time()
         self.makescaffolds(Graph) #Makes set of scaffolds
         print "The scaffolds are now done"
+        print datetime.datetime.now().time()
         self.printscaffolds()
         print "The scaffolds have been printed"
+        print datetime.datetime.now().time()
         self.gapprint()
         print "The gaps have been printed"
+        print datetime.datetime.now().time()
         self.totalgraph=self.makegraph(connections=self.completecheck(self.links),\
         cleanedlinks=self.links,threshold=0,dirty=True)
         self.stagestosif()
         print "The sif/network type files for cytoscape have been completed"
+        print datetime.datetime.now().time()
 
     def printscaffolds(self,filename='testScaffold'):
         try:
