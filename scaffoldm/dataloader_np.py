@@ -82,6 +82,10 @@ class DataLoader(object):
             self.links=1
         else:
             self.links=0
+        if os.isfile(covname) and os.isfile(covname.split(".tsv")[0]+"var.tsv"):
+            self.cov=0
+        if os.isfile(linksname):
+            self.links=0
         self.bamnames=bamnames
         self.contigloc=contigloc
         try:
@@ -114,67 +118,51 @@ class DataLoader(object):
                 print "Please Ensure you have provided appropiate input"
         else:
             print 'Error using bamm'
-
         #[1:] to remove header
         #print os.getcwd()
+        #np.loadtxt autoignores the header
         print "step 1"
-        self.contigNames=list(set([x for x in self.getcolumn(self.parsetsv(covname)[1:],[0])]))
+        self.contigNames=list(set(self.parsetsv(covname)[:,0]))
         print "step2"
-        self.links=self.parsetsv(linksname)[1:]
+        self.links=self.parsetsv(linksname) #Get all links
         print "step3"
-        self.inserts=self.parsetsv(insertname)[1:]
+        self.inserts=self.parsetsv(insertname)
         print "step4"
         self.getcovs(covname) #Extract coverage mean and variance - defines self.coverages as
         #dict[bamname][tigname]=[coveragemean,coveragesd]
 
-###All for parsing tsv file of links (BamM command line output)
-    def getcolumn(self,matrix,index):
-        try:
-            return [[row[i] for i in index] if len(index)>=2 \
-            else row[index[0]] for row in matrix]
-        except TypeError:
-            print "The indices must be an integer and in a list"
-        
-    def parsetsv(self,textfile="links.tsv"):
+    def parsetsv(self,textfile="links.tsv",delim='\t',comment='#'):
         ###Need to extend to attempt to detect delimiter
         ##Should be existing package for this
         import os
         import csv
+        import numpy as np
         try:
-            #print os.getcwd()
-            with open(textfile) as tsv:
-                return [line for line in csv.reader(tsv,delimiter="\t")]
+            return np.loadtxt(textfile, dtype=str, comments=comment, delimiter=delim)
         except:
             print "This is the current directory", os.getcwd()
             
-    def findIDind(self,linkmatrix,ID='cid'):
-        try:
-            varis=getrow(linkmatrix,0)
-            Colno=[i for (i, j) in enumerate(varis) if j.find(ID)>=0]
-            return Colno[0]
-        except SyntaxError or TypeError:
-            print "The Id does not appear to be a string or \n the linkmatrix is not iterable"
-
     def getcovs(self,covname):
         '''Opens variance and mean coverage file. Returns a dictionary with the mean and std of each
         contig in each bam file'''
         tig=(0,0)
         bam=(0,0)
         try:
-            means=self.parsetsv(covname)
-            N_bams=len(means[0])-2 #Excludes contig name and length columns
-            N_tigs=len(self.getcolumn(means,[0]))-1
-            variance=self.parsetsv(covname.split(".tsv")[0]+"var.tsv")
-            Nam_Bam1=means[0][2:]
-            Tigs=self.getcolumn(means,[0])[1:]
-            coverage={}
-            #Assuming bamnames are in same order - check later
+            means=self.parsetsv(covname,comment='|#$|') #comment is just
+            #to stop deafult removal of header since header starts with #
+            N_bams=len(means[1,:])-2 #Excludes contig name and length columns
+            N_tigs=len(means[:,0])-1 #Number of contigs
+            variance=self.parsetsv(covname.split(".tsv")[0]+"var.tsv",comment='|#$|')
+            Nam_Bam1=means[2:,0] #The names of the bam
+            Tigs= means[1:,0]#The names of the contigs
+            coverage={} #coverage value
+            #Assuming bamnames are in same order - check later - looks to always be case
             #Create a dictionary for each bam file with a mean,sd entry for each 
             coverages={(Nam_Bam1[bam].split(".bam")[0]):\
-            {(Tigs[tig]):[float(means[tig+1][bam+2]),float(variance[tig+1][bam+2])**0.5] \
+            {(Tigs[tig]):[means[tig+1,bam+2].astype(float),np.sqrt(variance[tig+1,bam+2].astype(float))] \
             for tig in range(N_tigs)} for bam in range(N_bams)}
             self.coverages=coverages
-            tiglen={Tigs[tig]:int(means[tig+1][1]) for tig in range(N_tigs)}
+            tiglen={Tigs[tig]:int(means[tig+1,1]) for tig in range(N_tigs)}
             self.tiglen=tiglen
         except IndexError:
             print "The index was out of bounds"

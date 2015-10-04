@@ -35,36 +35,9 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 ###############################################################################
 import scaffold
+import numpy as np
 ###############################################################################
 #Notes for possible conversion to numpy
-#import numpy as np
-#np.loadtxt('links.tsv', dtype=str, comments='#', delimiter='\t') #Create numpy array
-#super fast
-#np.logical_or(temp[:,0]==contig1,temp[:,1]==contig1)
-##Super fast - check if in each column and returns boolean on each paired ele
-#np.logical_and(np.logical_or(temp[:,0]==contig1,temp[:,1]==contig1),np.logical_or(temp[:,0]==contig2,temp[:,1]==contig2))
-#Gets the True False values for the list where both contigs are present
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-
-
 class DataParser(object):
     '''
     Class which does all the precalculations needed for giving input to
@@ -105,11 +78,13 @@ class DataParser(object):
         in each of 4 orientations, (0,1),(1,0),(1,1),(0,0)
         Here 0 is a read in the same direction as the contig'''
         linksfile=self.getlinks(contig1,contig2,clean=clean)
-        if linksfile==None:
+        if isinstance(linksfile,type(None)):
             return [0,0,0,0]
         #Changes from needing to maintain relative arrangement
-        tig1ind=linksfile[0].index(contig1)
-        tig2ind=linksfile[0].index(contig2)
+        #tig1ind=linksfile[0].index(contig1)
+        #tig2ind=linksfile[0].index(contig2)
+        tig1ind=np.where(linksfile[0]==contig1)[0][0]
+        tig2ind=np.where(linksfile[0]==contig2)[0][0]
         #Now maintains appropiate order, if refering to contigs in seperate arrangements
         #This is since index determines if x[4] refers to read of tig 1 or tig 2.
         if tig1ind<tig2ind: #Checks how the contig1 versus contig2 are place in readsfile
@@ -129,7 +104,7 @@ class DataParser(object):
     def getlinks(self,contig1,contig2=False,linksfile=None,clean=False,bam=False):
         '''Retrieves every link entry for one contig for every link 
         between two contigs'''
-        if linksfile==None:
+        if isinstance(linksfile,type(None)):
             if clean:
                 linksfile=self.cleanedlinks
             else:
@@ -137,14 +112,19 @@ class DataParser(object):
         try:
             if contig2==False:
                 if bam==False:
-                    Links=[row for row in linksfile if contig1 in row]
+                    Links=linksfile[np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1),:]
                 else:
-                    Links=[row for row in linksfile if (contig1 in row) and (bam in row) ]
+                    Links=linksfile[np.logical_and(np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1)\
+                    ,linksfile[:,8]==bam),:]
             else:
                 if bam==False:
-                    Links=[row for row in linksfile if (contig1 in row) and (contig2 in row)]
+                    Links=linksfile[np.logical_and(np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1),\
+                    np.logical_or(linksfile[:,0]==contig2,linksfile[:,1]==contig2)),:]
                 else:
                     Links=[row for row in linksfile if (contig1 in row) and (contig2 in row) and (bam in row)]
+                    Links=linksfile[np.logical_and(np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1),\
+                    np.logical_or(linksfile[:,0]==contig2,linksfile[:,1]==contig2),linksfile[:,8]==bam),:]
+                    #check if both contigs and desired bamfile
             if len(Links)>0:
                 return Links
             else:
@@ -156,20 +136,16 @@ class DataParser(object):
         '''Checks all contigs linked to the specified contig
         and return a list of these contigs.
         '''
-        if linksfile==None:
-            linksfile=self.cleanedlinks
         links=self.getlinks(contig1,False,linksfile,clean=True)
-        if links==None:
+        if isinstance(links,type(None)):
             return None
-        notcontig1=set([x[0] for x in links if x[0]!=contig1])
-        nottig1=set([x[1] for x in links if x[1]!=contig1])
+        notcontig1=set(links[links[:,0]!=contig1,0])
+        nottig1=set(links[links[:,1]!=contig1,1])
         return list(nottig1|notcontig1)
 
     def completecheck(self,cleanedlinks=None):
         '''Uses CheckLinks to Construct all a dictionary with a key for each contigs
         which contains all contigs to which they are linked.'''
-        if cleanedlinks==None:
-            cleanedlinks=self.cleanedlinks
         connections={}
         for contig in self.contignames:
             connections[contig]= self.checklinks(contig,cleanedlinks)
@@ -258,14 +234,12 @@ class DataParser(object):
         This will be used to construct a graph, each contigs will be a node, it will join other contigs
         if it passed the threshold number
         '''
-        if cleanedlinks==None:
-            cleanedlinks=self.cleanedlinks
-        if connections==None:
+        if isinstace(connections,type(None)):
             connections=self.completecheck()
         Graph={}
         for contig1 in connections:
             Graph[contig1]=[]
-            if connections[contig1]==None:
+            if isinstance(connections[contig1],type(None)):
                 pass
             else:
                 for contig2 in connections[contig1]:
@@ -279,12 +253,9 @@ class DataParser(object):
                     if index==[]:
                         pass
                     elif len(index)>0:
-                        Graph[contig1]=Graph[contig1]+[contig2]
+                        Graph[contig1]+=[contig2]
         if not dirty:
             self.graph=Graph
-        #print Graph
-        #print self.makeedges(Graph)
-        #print OrientedGraph
         return Graph
 
     def makescaffolds(self,Graph):
@@ -531,11 +502,11 @@ class DataParser(object):
         #print maxcounts, "Here I am bugfixing"
         for count,tup in maxcounts:
             if float(count)/best[0]>=threshold and (count,tup)!=best and not covaccept[tup][0] and not covaccept[best[1]][0]:
-                print best, "Compared to",(count,tup), "Inconclusive for both"
+                #print best, "Compared to",(count,tup), "Inconclusive for both"
                 nextcheck=False #Don't do the next check - failed first test
                 test1=False #Failed first threshold
             elif float(count)/best[0]>=threshold and (count,tup)!=best and covaccept[tup][0] and covaccept[best[1]][0]:
-                print best, "Compared to",(count,tup), "Support for both"
+                #print best, "Compared to",(count,tup), "Support for both"
                 nextcheck=False #Don't do the next check - failed first test
                 test1=False #Failed first threshold
             elif float(count)/best[0]>=threshold and (count,tup)!=best and not covaccept[tup][0] and covaccept[best[1]][0]:
@@ -544,7 +515,7 @@ class DataParser(object):
                 pass 
             elif float(count)/best[0]>=threshold and (count,tup)!=best and covreject[tup][0] and not covreject[best[1]][0]:
                 #If coverage indicates the current pair shouldn't be considered, don't consider breaking the threshold a failure
-                print "Support against tup but not best"
+                #print "Support against tup but not best"
                 pass
             else:
                 #print "It does not appear that coverage brought me here"
@@ -600,7 +571,7 @@ class DataParser(object):
         tempgap=self.gapest(tig1,tig2)
         for key in seqspaces:
             temp=self.getlinks(tig1,tig2,bam=key+".bam")
-            if temp!=None:
+            if not isinstance(temp,type(None)):
                 N_rpbam+=[len(self.getlinks(tig1,tig2,bam=key+".bam"))] #Number of links per bam library
                 cover+=[min(self.tiglen[tig2],seqspaces[key][0]-tempgap)]
             #Using arithmetic mean here.
@@ -620,12 +591,13 @@ class DataParser(object):
         for tup in tuplist:
             y=x
             x=tup
-            if x==None or y==None:
+            if not isinstance(x,type('h')) or not isinstance(y,type('h')):
+                #Both have to be legal strings, i.e, contig names
                 pass
             else:
                 if isinstance(fuser,type(None)):
                     fuser=self.dubtuple(y,x)
-                if all(not isinstance(ele,bool) for ele in y for ele2 in x):
+                if all(not isinstance(ele,bool) for ele in y) and all(not isinstance(ele2,bool) for ele2 in x):
                     fuser=self.dubtuple(fuser,x)
                 else:
                     pass
@@ -698,24 +670,16 @@ class DataParser(object):
         for name in bamNames:
             #print name
             #Should give unique insert mean and insert std
-            meaninsert[name]=[float(x[1]) for x in insertfile if name+".bam" in x]
-            stdinsert[name]=[float(x[2]) for x in insertfile if name+".bam" in x]
-            ####Need to mod this list compre to get b
-        #~ for i,x in enumerate(linksfile):
-            #~ if i%100==0:
-                #~ print x[bamnameindex].split('.bam')[0]
-        cleanedlinks=[x for x in linksfile if self.lowerdist(x)<\
-        (meaninsert[x[bamnameindex].split('.bam')[0]][0]+cutoff*stdinsert[x[bamnameindex].split('.bam')[0]][0])]
-        #for x in cleanedlinks:
-            #print self.lowerdist(x),
-        #print meaninsert
-        #print stdinsert
-        #~ for name in bamNames:
-            #~ print (meaninsert[name][0]+cutoff*stdinsert[name][0]), "This was the cutoff"
-        self.cleanedlinks=cleanedlinks
+            meaninsert[name]=np.atleast_2d(insertfile)[np.atleast_2d(insertfile)[:,0]==name+".bam",1].astype(float)
+            stdinsert[name]=np.atleast_2d(insertfile)[np.atleast_2d(insertfile)[:,0]==name+".bam",2].astype(float)
+            #meaninsert[name]=[float(x[1]) for x in insertfile if name+".bam" in x]
+            #stdinsert[name]=[float(x[2]) for x in insertfile if name+".bam" in x]
         self.mean=meaninsert
         self.std=stdinsert
-        return (meaninsert,stdinsert)
+        cleanedlinks=linksfile[self.veclowerdist(linksfile)<self.veccutoff(linksfile),:]
+        self.cleanedlinks=cleanedlinks
+
+        return
         
     def parse(self):
         '''links all functions to start from the DataParser input and to end
@@ -761,7 +725,33 @@ class DataParser(object):
         else:
             dist2=int(onelink[5])-int(onelink[6])
         return (dist1+dist2)
-
+    def veclowerdist(self,alllinks):
+        '''severe lower bound on gap between
+         reads (ignores gap between contigs)'''
+        size=len(alllinks[:,1])
+        dist1=np.zeros(size)
+        dist2=np.zeros(size)
+        #Get the indices for each orientation pair
+        ori11=np.arange(size)[alllinks[:,4].astype(int)==1]
+        ori10=np.arange(size)[alllinks[:,4].astype(int)==0]
+        ori21=np.arange(size)[alllinks[:,7].astype(int)==1]
+        ori20=np.arange(size)[alllinks[:,7].astype(int)==1]
+        dist1[ori11]=alllinks[ori11,3].astype(int)
+        dist1[ori10]=alllinks[ori10,2].astype(int)-alllinks[ori10,3].astype(int)
+        dist2[ori21]=alllinks[ori21,6].astype(int)
+        dist2[ori20]=alllinks[ori20,5].astype(int)-alllinks[ori20,6].astype(int)
+        return (dist1+dist2)
+        
+    def veccutoff(self,alllinks,cutoff=3):
+        size=len(alllinks[:,1])
+        thresh=np.zeros(size)
+        indices=np.arange(size)
+        bamindices={bam:indices[alllinks[:,8]==bam+".bam"] for bam in self.bamnames}
+        for name in self.bamnames:
+            thresh[bamindices[name]]=self.mean[name][0]\
+            +cutoff*self.std[name][0]
+        return thresh
+        
     def makeedges(self,graph):
         '''edges as (node1,node2) tuples.'''
         edges=[]
@@ -787,8 +777,6 @@ class DataParser(object):
         in the manner presented in Sahlini et al. 2012. There are issues where if the gap
         is too large compared to the insert size then the gapestimator is not effective. This
         is covered by testing for conditions where the estimator would fail and putting in a default value.'''
-        if cleanedlinks==None:
-            cleanedlinks=self.cleanedlinks
         if bamnames==None:
             bamnames=self.bamnames
         if default:
@@ -813,7 +801,8 @@ class DataParser(object):
         nullscaf=Scaffold({},'Null',self.contigloc)
         meaninsert=self.mean
         stdinsert=self.std
-        observations=[self.lowerdist(x) for x in cleanedlinks if (contig1 in x) and (contig2 in x)]
+        observations=self.veclowerdist(self.getlinks(contig1,contig2,clean=True))
+        #observations=[self.lowerdist(x) for x in cleanedlinks if (contig1 in x) and (contig2 in x)]
         #print observations
         r=self.readlen #read length
         m=3 #Arbitrary tolerance level
@@ -948,7 +937,7 @@ class DataParser(object):
         prob=1
         j=0
         for i,pair in enumerate(pairs):
-            repack=zip(*pair) 
+            repack=zip(*pair)
             #print repack
             if 0 not in repack[1]:
                 prob*=self.distancecalc(repack[0],repack[1])

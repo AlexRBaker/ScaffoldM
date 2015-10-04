@@ -712,7 +712,7 @@ def postprocess(sifloc,trueloc,final=False):
                 TrueEdge="False"
             if not final:
                 remove=curline[4].rstrip('\n')
-                print remove
+                #print remove
                 if remove=="True" and TrueEdge=="True":
                     Decision="FalseNeg"
                 elif remove=="True" and TrueEdge=="False":
@@ -889,7 +889,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
     parser.add_argument('-e','--error',type=int,nargs='?',
     help='Whether or not',default=0.75)
     parser.add_argument('-w','--wrapperp',type=str,nargs='?',
-    help='The path to ScaffoldM wrapper',default="~/Documents/Geneslab/ACE_s4284361/scaffoldm_project/ScaffoldM/scaffoldm/")
+    help='The path to ScaffoldM wrapper',default="~/Documents/Geneslab/ScaffoldM/scaffoldm/")
     parser.add_argument('-si','--sim',type=str,nargs='?',
     help='Whether or not to simulate',default=True)
     parser.add_argument('-C','--contiglocation',type=str,nargs='?',
@@ -976,7 +976,7 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
         pass
     #To separate from SIM - needs a library file
     #perl SSPACE_Basic.pl -l libraries.txt -s contigs.fasta -x 0 -m 32 -o 20 -t 0 -k 5 -a 0.70 -n 15 -p 0 -v 0 -z 0 -g 0 -T 1 -b standard_out
-    mapreads=True
+    mapreads=False
     if mapreads:
         print "SSPACE", contigloc, "The contig file"
         print "perl {4} -l {0} -s {1} -x 0 \
