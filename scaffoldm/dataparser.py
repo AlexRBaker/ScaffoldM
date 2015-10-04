@@ -36,6 +36,8 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 import scaffold
 import numpy as np
+import pandas as pd
+import datetime
 ###############################################################################
 #Notes for possible conversion to numpy
 class DataParser(object):
@@ -103,6 +105,10 @@ class DataParser(object):
             rev=len(linksfile[np.logical_and(linksfile[:,4]=='1',linksfile[:,7]=='0'),0])
             #rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
         else:
+            print tig1ind
+            print tig2ind
+            print contig1
+            print contig2
             norm=0
             rev=0
             print "How is this possible? contig1!=contig2"
@@ -142,22 +148,53 @@ class DataParser(object):
         except TypeError:
             print "Contig1 must be string, contig2 can be ither False or a string"
             
-    def checklinks(self,contig1,linksfile=None,clean=True):
-        '''Checks all contigs linked to the specified contig
-        and return a list of these contigs.
-        '''
-        links=self.getlinks(contig1,False,linksfile,clean)
-        if isinstance(links,type(None)):
-            return None
-        return list(set(links[links[:,1]!=contig1,1])|set(links[links[:,0]!=contig1,0]))
+    #~ def checklinks(self,contig1,linksfile=None,clean=True):
+        #~ '''Checks all contigs linked to the specified contig
+        #~ and return a list of these contigs.
+        #~ '''
+        #~ links=self.getlinks(contig1,False,linksfile,clean)
+        #~ if isinstance(links,type(None)):
+            #~ return None
+        #~ return list(np.unique1d(pd.unique(links[links[:,1]!=contig1,1]),pd.unique(links[links[:,0]!=contig1,0])))
 
     def completecheck(self,cleanedlinks=None,clean=True):
-        '''Uses CheckLinks to Construct all a dictionary with a key for each contigs
-        which contains all contigs to which they are linked.'''
+        '''Uses numpy goodness. Sorts by each column of contigs. THen, find indices of first
+        instance of the unique and splits the links into subarrays by each column. Then it is
+        simply a matter of looping over the subarrays to create the dictionary. About 400 times faster than old method'''
+        ###Appears to be drastically faster
         connections={}
-        for contig in self.contignames:
-            print contig
-            connections[contig]= self.checklinks(contig,cleanedlinks,clean)
+        if clean and isinstance(cleanedlinks,type(None)):
+            links=self.cleanedlinks
+        elif not clean and isinstance(cleanedlinks,type(None)):
+            links=self.links
+        else:
+            links=cleanedlinks
+        tigs1=links[links[:,0].argsort(),0:2] #indices to order first column
+        tigs2=links[links[:,1].argsort(),0:2] #Indices to order second column
+        splittigs1=np.vsplit(tigs1,np.unique(tigs1[:,0],return_index=True)[1]) #array split by first col
+        splittigs2=np.vsplit(tigs2,np.unique(tigs2[:,1],return_index=True)[1]) #Array split by second col
+        for array in splittigs1: #Should be ~38000 in ratdata
+            if np.size(array)>0:
+                key=pd.unique(array[:,0]) #Should be one contig
+                if len(key)==1:
+                    key=key[0] #Should now be the string
+                else:
+                    print "Dunno what happened here"
+                if key not in connections:
+                    connections[key]=list(pd.unique(array[:,1])) #Get all unique linked tigs
+                elif key in connections:
+                    connections[key]=list(np.union1d(connections[key],pd.unique(array[:,1])))
+        for array in splittigs2:
+            if np.size(array)>0:
+                key=pd.unique(array[:,1])
+                if len(key)==1:
+                    key=key[0] #Should now be the string
+                else:
+                    print "Dunno what happened here",key
+                if key not in connections:
+                    connections[key]=list(pd.unique(array[:,0])) #Get all unique linked tigs
+                elif key in connections:
+                    connections[key]=list(np.union1d(connections[key],pd.unique(array[:,0])))
         return connections
         
     def graphtosif(self,graph,graphname,removed=True,dirty=False,final=False):
@@ -247,26 +284,49 @@ class DataParser(object):
             print "Creating connection"
             connections=self.completecheck(clean=not dirty)
             print "Finished making connections"
+            print datetime.datetime.now().time()
+        if not dirty and isinstance(cleanedlinks,type(None)):
+            links=self.cleanedlinks
+        elif dirty and isinstance(cleanedlinks,type(None)):
+            links=self.links
+        else:
+            links=cleanedlinks
         Graph={}
-        for contig1 in connections:
-            Graph[contig1]=[]
-            if isinstance(connections[contig1],type(None)):
-                pass
-            else:
-                for contig2 in connections[contig1]:
-                    Counts=self.readCounts(contig1,contig2,clean= not dirty)
-                    #x==max(Counts) covers case of competing link orientations between two of the same
-                    #contigs - default is to the the one with most in that orientation.
-                    index=np.arange(len(Counts))
-                    index=index[np.logical_and(Counts>=threshold,Counts==max(Counts))]
-                    if len(index)==0: #No counts were suitable
-                        pass
-                    elif len(index)>0:
-                        Graph[contig1]+=[contig2]
+        tigs1=links[links[:,0].argsort(),0:2] #indices to order first column
+        tigs2=links[links[:,1].argsort(),0:2] #Indices to order second column
+        double=np.vstack((tigs1,np.fliplr(tigs2))) #flipped array and went left to right
+        double=double[double[:,0].argsort(),0:2] #Sorts by the first column
+        splitdouble=np.vsplit(double,np.unique(double[:,0],return_index=True)[1]) #array split by first col
+        self.splitdouble=self.splitdouble
+        for array in double:
+            if np.size(array)>max(0,threshold*2-1): 
+                #Condition ensures don't waste time on arrays
+                #too small to have threshold supporting links
+                if np.size(array)==2:
+                    key=array[0] #Get first entry
+                    Graph[key]=[]
+                else:
+                    key=pd.unique(array[:,0]) #Should be one contig
+                if len(key)==1:
+                    key=key[0] #Should now be the string
+                    Graph[key]=[]
+                elif isinstance(key,str):
+                    pass
+                else:
+                    print "Dunno what happened here"
+                if np.size(array)==2:
+                    counts=np.unique(array[1],return_counts=True)
+                else:
+                    counts=np.unique(array[:,1],return_counts=True)
+                candidates=counts[0][counts[1]>=threshold]
+                if len(candidates)>0:
+                    Graph[key]=np.concatenate((Graph[key],candidates),axis=0)
+        #Currently has duplicate eg contig1 - contig2 and contig2 to contig 1 as entries
+        #Shouldn't matter - handled in scaffold creation
         if not dirty:
             self.graph=Graph
         return Graph
-
+    
     def makescaffolds(self,Graph):
         '''Takes Graph of all connections and one with orientations,
         makes a dictionary of Scaffold objects for scaffoldset'''
@@ -281,6 +341,7 @@ class DataParser(object):
         #print Scaffolds
         #Now need to retrieve each scaffold with the order,gapsize,orientation
         paths,pathz=self.makepathss(Graph)
+        print "Paths have been completed",datetime.datetime.now().time()
         self.finalgraph=self.pathstograph(pathz) #Turns final paths back into a graph
         #Now unpacks the paths to make scaffolds
         for path in paths:
@@ -343,13 +404,16 @@ class DataParser(object):
         The legality of paths is not checked
         Made with assumption that isolated tigs have been removed'''
         edges=self.makeedges(Graph)
-        #Nedges=self.edgestograph(edges)
         badedges={}
         connections={}
         paths=self.findpath(edges) #Makes the paths
         pathz=paths #Storing for later use
-        if type(paths[0])==list:
-            paths=[self.tuplecollapse(x) for x in paths if x!=None]
+        try:
+            if type(paths[0])==list:
+                paths=[self.tuplecollapse(x) for x in paths if x!=None]
+        except:
+            print paths, "This is the paths"
+            pass
         #print paths
         return paths,pathz
     def mergedicts(self,x,y):
@@ -688,11 +752,13 @@ class DataParser(object):
         self.std=stdinsert
         cleanedlinks=linksfile[self.veclowerdist(linksfile)<self.veccutoff(linksfile),:]
         self.cleanedlinks=cleanedlinks
-
+        print np.size(cleanedlinks), "The new Size"
+        print np.size(linksfile), "the old size"
         return
         
     def parse(self):
         import datetime
+        import sys
         '''links all functions to start from the DataParser input and to end
         with the processed scaffolds(with gap estimate and proper orientation).
         It will also call all of the scaffolds to print to the scaffold file.'''
@@ -702,6 +768,7 @@ class DataParser(object):
         Graph=self.makegraph() #Makes initial connections with no.reads>threshold
         print "This initial graph has been made"
         print datetime.datetime.now().time()
+        sys.stdout.flush()
         self.makescaffolds(Graph) #Makes set of scaffolds
         print "The scaffolds are now done"
         print datetime.datetime.now().time()
