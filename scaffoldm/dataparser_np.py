@@ -74,11 +74,91 @@ class DataParser(object):
         self.tiglen=tiglen
         self.readlen=readsize
         self.gaps={}
+        self.cleanreadcounts=None
+        self.readcounts=None
     def tigin(self,contig1,linksfile):
         '''Uses numpy vectorised functions to check if a contig
         is present in a linksfile'''
         return np.logical_or(linksfile[:,0]==contig1,linksfile[:,1]==contig1)
         
+    def getcounts(self,clean,contig1,contig2):
+        '''Call the relevant dictionaries to get read counts'''
+        if clean and isinstance(self.cleanreadcounts,type(None)):
+            self.vecreadCounts(dirty=not clean)
+            print "Finished getting counts"
+            print datetime.datetime.now().time()
+        elif not clean and isinstance(self.readcounts,type(None)):
+            self.vecreadCounts(dirty=not clean)
+            print "Finished getting dirty counts"
+            print datetime.datetime.now().time()
+        if clean:
+            return self.cleanreadcounts[contig1][contig2]
+        if not clean:
+            return self.readcounts[contig1][contig2]
+    def vecreadCounts(self,dirty=False,cleanedlinks=None):
+        if not dirty and isinstance(cleanedlinks,type(None)):
+            links=self.cleanedlinks
+        elif dirty and isinstance(cleanedlinks,type(None)):
+            links=self.links
+        else:
+            links=cleanedlinks
+        Graph={}
+        tigs1=links[:,:] #indices to order first column
+        tigs2=links[:,:] #Indices to order second column
+        tigs2[:,[0,1]]=tigs2[:,[1,0]]
+        double=np.vstack((tigs1,tigs2)) #flipped array and went left to right
+        double=double[double[:,0].argsort(),:] #Sorts by the first column
+        #array of tuples orientations
+        double=np.array([double[:,0],double[:,1],np.array(zip(double[:,4],double[:,7]),dtype=('i4,i4'))]).T #Orientation
+        splitdouble=np.vsplit(double,np.unique(double[:,0],return_index=True)[1]) #array split by first col
+        Graph={}
+        for array in splitdouble:
+            if np.size(array)>0: 
+                #Condition ensures don't waste time on arrays
+                #too small to have threshold supporting links
+                if np.size(array)==3:
+                    key=array[0][0] #Get first entry
+                    Graph[key]={}
+                else:
+                    key=pd.unique(array[:,0])[0] #Should be one contig
+                    Graph[key]={}
+                if np.size(array)==3:
+                    subarrays=np.vsplit(array[array[:,1].argsort(),:],np.unique(array[array[:,1].argsort(),1],return_index=True)[1])
+                    for subarray in subarrays:
+                        if np.size(subarray)>0:
+                            key2=pd.unique(subarray[1])[0]
+                            counts=np.unique(subarray[2],return_counts=True)
+                            Graph[key][key2]=self.countstocount(counts)
+                    
+                else:
+                    subarrays=np.vsplit(array[array[:,1].argsort(),:],np.unique(array[array[:,1].argsort(),1],return_index=True)[1])
+                    for subarray in subarrays:
+                        if np.size(subarray)>0:
+                            key2=pd.unique(subarray[:,1])[0]
+                            
+                            counts=np.unique(subarray[:,2],return_counts=True)
+                            Graph[key][key2]=self.countstocount(counts)
+        if not dirty:
+            self.cleanreadcounts=Graph
+        elif dirty:
+            self.readcounts=Graph
+    def countstocount(self,nparray):
+        counts=[0,0,0,0]
+        paired=np.array([nparray[0],nparray[1]]).T #Turns it into array with [orientations]
+        for ori,count in paired:
+            ori=tuple(ori) #For easy comparison
+            if ori==(1,0):
+                counts[0]=count
+            elif ori==(0,1):
+                counts[1]=count
+            elif ori==(1,1):
+                counts[2]=count
+            elif ori==(0,0):
+                counts[3]=count
+            else:
+                print ori, "This is an odd happenstance"
+        return counts
+            
     def readCounts(self,contig1,contig2,linksfile=None,clean=False):
         '''Gets the number of links between two contigs
         in each of 4 orientations, (0,1),(1,0),(1,1),(0,0)
@@ -93,7 +173,6 @@ class DataParser(object):
         tig2ind=np.where(linksfile[0]==contig2)[0][0]
         #Now maintains appropiate order, if refering to contigs in seperate arrangements
         #This is since index determines if x[4] refers to read of tig 1 or tig 2.
-        norm=len(linksfile[np.logical_and(linksfile[:,4]=='1',linksfile[:,7]=='0'),0])
         if tig1ind<tig2ind: #Checks how the contig1 versus contig2 are place in readsfile
             norm=len(linksfile[np.logical_and(linksfile[:,4]=='1',linksfile[:,7]=='0'),0])
             #norm=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
@@ -105,6 +184,10 @@ class DataParser(object):
             rev=len(linksfile[np.logical_and(linksfile[:,4]=='1',linksfile[:,7]=='0'),0])
             #rev=len([x for x in linksfile if (contig1 in x) and (contig2 in x) and (x[4]=='1' and x[7]=='0')])
         else:
+            print tig1ind
+            print tig2ind
+            print contig1
+            print contig2
             norm=0
             rev=0
             print "How is this possible? contig1!=contig2"
@@ -194,7 +277,7 @@ class DataParser(object):
         return connections
         
     def graphtosif(self,graph,graphname,removed=True,dirty=False,final=False):
-        #print graphname, "This is the supposed graph being parsed"
+        print graphname, "This is the supposed graph being parsed"
         #print "\n",graph
         header="Node1\tRelationship\tNode2\tRemoved\n"
         done=set([])
@@ -203,20 +286,20 @@ class DataParser(object):
                 for contig2 in connected:
                     if (contig1,contig2) not in done and (contig2,contig1) not in done:
                         if dirty:
-                            Counts=self.readCounts(contig1,contig2,clean=False) #The 4 orientations
+                            Counts=self.getcounts(clean=False,contig1,contig2) #The 4 orientations
                             for i,links in enumerate(Counts):
                                 if links!=0:
                                     network2.write("{0}\t{1}\t{2}\t{3}\t{4}\n".format(contig1,\
                                     self.linkorientation(i),contig2,links,removed[contig1][contig2]))
                         elif not dirty and not final:
-                            Counts=self.readCounts(contig1,contig2,clean=True)
+                            Counts=np.array(self.getcounts(clean=True,contig1,contig2))
                             index=np.arange(len(Counts))
                             index=index[Counts==max(Counts)]
                             if len(index)>0:                               
                                 network2.write("{0}\t{1}\t{2}\t{3}\t{4}\n".format(contig1,\
                                 self.linkorientation(index),contig2,max(Counts),removed[contig1][contig2]))
                         if final:
-                            Counts=self.readCounts(contig1,contig2,clean=True)
+                            Counts=self.getcounts(clean=True,contig1,contig2)
                             network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
                             '(0,1)',contig2,max(Counts)))
                         done|=set([(contig1,contig2)]) #Add current pair
@@ -380,7 +463,7 @@ class DataParser(object):
         to write a flag file with possible inversions. It is checked elsewhere if the flip will ensure
         the 0,1 read orientation. For, for the righthand side this would be needing a 0,0 to flip and LHS
         a 1,1. Note that arrange is decided for each pair and is such that if it needs to flip then the prevnode will be flipped'''
-        links=self.readCounts(prevnode,curnode,clean=True)
+        links=np.array(self.getcounts(clean=True,prevnode,curnode))
         index=np.arange(len(links))
         index=index[links==max(links)] #Assumes the maximum linked direction is used 
         #This assumption is throughout ScaffoldM
@@ -489,7 +572,7 @@ class DataParser(object):
                 doneedges|=set([edge]) #Consider current tuple
                 doneedges|=set([edge[::-1]]) #Consider the reversed tuple
                 if len(path)==1: #Force a orientation consideration on starting pair
-                    Counts=self.readCounts(edge[0],edge[1],clean=True)
+                    Counts=np.array(self.getcounts(clean=True,edge[0],edge[1]))
                     index=np.arange(len(Counts))
                     index=index[Counts==max(Counts)]
                     orientation=self.linkorientation(index)
@@ -563,7 +646,7 @@ class DataParser(object):
             covtest[edge]=[]
             if front:
                 #Note path[-1][1]==edge[0] by how the possible edges were decided
-                counts=self.readCounts(path[-1][0],edge[0],clean=True)
+                counts=np.array(self.getcounts(clean=True,path[-1][0],edge[0]))
                 index=np.arange(len(counts))
                 index=index[counts==max(counts)]
                 #~ if not isinstance(index,int):
@@ -572,7 +655,7 @@ class DataParser(object):
                 covtest[edge]+=[self.metabatprobtest(path[-1][0],edge[0])]
             elif not front:
                 #path[0][0]==edge[1] by how possible edges are evaluated
-                counts=self.readCounts(edge[0],path[0][0],clean=True) #Reorder ensures orientation for later
+                counts=np.array(self.getcounts(clean=True,edge[0],path[0][0])) #Reorder ensures orientation for later
                 index=np.arange(len(counts))
                 index=index[counts==max(counts)]
                 #~ if not isinstance(index,int):
@@ -667,7 +750,7 @@ class DataParser(object):
         for key in seqspaces:
             temp=self.getlinks(tig1,tig2,bam=key+".bam")
             if not isinstance(temp,type(None)):
-                N_rpbam+=[len(self.getlinks(tig1,tig2,bam=key+".bam"))] #Number of links per bam library
+                N_rpbam+=[len(temp)] #Number of links per bam library
                 cover+=[min(self.tiglen[tig2],seqspaces[key][0]-tempgap)]
             #Using arithmetic mean here.
         mean=sum([x/float(N_rpbam[i]) for i,x in enumerate(cover)])/len(seqspaces) #Average seqspace per link over bams
