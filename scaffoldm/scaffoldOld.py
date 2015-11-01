@@ -44,17 +44,14 @@ __email__ = "Alexander.baker@uqconnect.edu.au"
 ###############################################################################
 import sys
 import os
-#import re #Regular expressions for name matching in contigs
+
 class Scaffold(object):
     """Utilities wrapper"""
     def __init__(self,
                 scaffold,
                 scaffoldname,
-                All_contigs,
                 linesize=70,
-                contigloc='Dupes.fna',
-                formatted=False,
-                ):        
+                contigloc='Dupes.fna'):        
         ##The scaffold will have the following structure
         ##The key - scaffold name
         ##value - dictionary with contig names as key
@@ -70,84 +67,50 @@ class Scaffold(object):
             self.contigNames=None
         self.linesize=linesize
         self.contigloc=contigloc
-        self.contigdict=None
+            
+    ###Fancy algorithm will be replaced with the function which determines
+    ###assignment of contigs to scaffolds
+    ###Picks start,end and orientation
+    ###Gapestimator - implementation of sahlini et al 2013 gap estimation
+    ###Appends gap size to all self.Scaffold list entries for
+    ### scaffold tig pairs
     
-    def extractcontigs(self,contignames):
-        return All_contigs[contigname]
-    #~ def extractcontigs(self,contignames,contigloc,header=True):
-        #~ '''Just assigns contigs file via contigloc.
-        #~ Temporary just for use when making scaffold
-        #~ Will extract the text for that contig'''
-        #print "Starting contig extraction"
-        #~ if isinstance(self.contigdict,type(None)):
-            #~ curname=None
-            #~ try:
-                #~ if isinstance(contignames,list):
-                    #~ re_contignames=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames]
-                    #~ #Any extra char after the contig a int (since other contig names might conflict)
-                    #~ self.contigdict={}
-                    #~ with open(contigloc,'r') as Contigs:
-                        #~ head=Contigs.readline()
-                        #~ if not head.startswith('>'):
-                            #~ print "An error in file format"
-                            #~ raise TypeError("Not a FASTA file:")
-                        #~ Contigs.seek(0)
-                        #~ Go=False
-                        #~ for line in Contigs:
-                            #~ if line.startswith('>') and any(not isinstance(regexp.search(line),type(None)) for regexp in re_contignames):
-                                #~ curname=self.findname(contignames,line)
-                                #~ self.contigdict[curname]=[]
-                                #~ Go=True
-                            #~ elif not isinstance(curname,type(None)) and not line.startswith('>') and Go:
-                                #~ self.contigdict[curname].append(line.translate(None,'\n')) #Adds sequence line to current contig
-                            #~ elif line.startswith('>'):
-                                #~ Go=False
-                          #~ #  if line.startswith('>'):
-                             #~ #   if any(not isinstance(regexp.search(line),type(None)) for regexp in re_contignames):
-                             #~ #       curname=self.findname(re_contignames,line)
-                             #~ #       self.contigdict[curname]=[]
-                              #~ #      Go=True
-                             #~ #   else:
-                            #~ #        Go=False
-                           #~ # elif not isinstance(curname,type(None)) and not line.startswith('>') and Go:
-                           #~ #     self.contigdict[curname].append(line.translate(None,'\n')) #Adds sequence line to current contig
-                            #~ else:
-                                #~ pass
-                    #~ for contig in self.contigdict.keys():
-                        #~ self.contigdict[contig]=''.join(self.contigdict[contig]) #Turns into large string
-                #~ else:
-                    #~ print "List of contigs error"
-                    #~ raise TypeError("Need list of contigs to form contigdict")
-            #~ except:
-                #~ print "Another error"
-                #~ print self.contigNames, "These are the names of the contigs"
-                #~ raise
-        #~ else:
-            #~ try:
-                #~ return self.contigdict[contignames]
-            #~ except:
-                #~ print "Probably a key error"
-                #~ print contignames
-                #~ print self.contigdict
-                #~ raise
-
-    #~ def findname(self,contignames,line):
-        #~ reg_exp=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames]
-        #~ finalname=None
-        #~ for i,contigname in enumerate(reg_exp):
-            #~ if not isinstance(contigname.search(line),type(None)):
-                #~ #print contigname
-                #~ finalname=contignames[i]
-            #~ else:
-                #~ pass
-        #~ return finalname
+    def extractcontigs(self,contigname,contigloc,header=True):
+        '''Just assigns contigs file via contigloc.
+        Temporary just for use when making scaffold
+        Will extract the text for that contig'''
+        import sys
+        try:
+            with open(contigloc,'r') as Contigs:
+                head=Contigs.readline()
+                if not head.startswith('>'):
+                    raise TypeError("Not a FASTA file:")
+                Contigs.seek(0)
+                title=head[1:].rstrip() ##Strips whitespace and >
+                record=0
+                contigseq=[]
+                for line in Contigs:
+                    if line.startswith('>') and line.find(contigname)>=0:
+                        record=1
+                        if header:
+                            contigseq.append(line)
+                    elif line.startswith('>') and contigname not in line:
+                        record=0
+                    elif record==1:
+                        contigseq.append(line)
+                    else:
+                        pass
+                seq=''.join(contigseq)
+                return seq
+        except:
+            print "Error opening file:", contigloc,sys.exc_info()[0]
+            raise
     #all_keys = set().union(*(d.keys() for d in mylist)) gets all
     # from list of dicts
-    def arrangetigs(self, contigname,contigspec,tig_seq,header=False):
+    def arrangetigs(self, contigname,contigspec,header=False):
         ##Simple, takes slice and rearranges contig for scaffold making
         ##Orientation - 0 normal, 1 flipped
-        #tigseq=seq_dict[contigname]
-        tigseq=tig_seq
+        tigseq=self.extractcontigs(contigname,self.contigloc,header)
         start=contigspec[0]
         end=contigspec[1]
         orientation=contigspec[2]
@@ -161,11 +124,10 @@ class Scaffold(object):
             else:
                 return tigseq[end:start:-1]
             
-    def printscaffold(self,seq_dict,filename=None,header=False,formatted=False,bunch=True):
+    def printscaffold(self,filename=None,header=False):
         '''contigspec gonna probably be 5 entries - start,end,orientaiton.
         gap,order
         '''
-        #self.extractcontigs(self.contigNames,self.contigloc,header=False) - Outdated - old contig loading schema
         ##Can then optionally choose 
         #to write all to one file or one for each scaffodl
         scaffoldname=self.name
@@ -184,30 +146,6 @@ class Scaffold(object):
         ##Then, loops over this sorted list of tuples and extracts key
         ##Then, return list of contig name in sorted order in scaffold
         Contigs=self.contigNames
-        ContigSeq=''
-        if not formatted:
-            if not bunch:
-                with open(filename,'a+') as scaffile:
-                    #THe header
-                    scafheader=">{0}|Contigs:{1}\n".format(scaffoldname,",".join(Contigs))
-                    scaffile.write(scafheader)
-                    for tig in Contigs:
-                        ContigSeq=(self.arrangetigs(tig,\
-                        self.scaffold[scaffoldname][tig],self.extractcontig(tig))+\
-                        self.scaffold[scaffoldname][tig][gapsize]*"N").translate(None,"\n")
-                        #Get the oriented and gapped sequence for that contig with all line breaks
-                        #removed
-                        scaffile.write(ContigSeq)
-                    scaffile.write('\n')
-            else:
-                scafheader=">{0}|Contigs:{1}\n".format(scaffoldname,",".join(Contigs))
-                for tig in Contigs:
-                    ContigSeq+=(self.arrangetigs(tig,\
-                        self.scaffold[scaffoldname][tig],self.extractcontig(tig))+\
-                    self.scaffold[scaffoldname][tig][gapsize]*"N").translate(None,"\n")
-                ContigSeq+="\n"
-            return [scafheader,ContigSeq]
-
         with open(filename,'a+') as scaffile:
             ##Need to add check to ensure header is written on its own line
             scafheader=">{0}|Contigs:{1}\n".format(scaffoldname,",".join(Contigs))
@@ -270,4 +208,8 @@ class Scaffold(object):
         except TypeError:
             print "end must be concatenable to string, \
             intended use is type(str) for both"
-
+            
+    def loadtigsequence(self, contig1):
+        return
+    def loadscafsequence(self):
+        return 

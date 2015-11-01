@@ -39,6 +39,7 @@ import os
 import sys
 import numpy as np
 import datetime
+import re #Regular expressions for name matching in contigs
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -89,6 +90,7 @@ class DataLoader(object):
             self.links=0
         self.bamnames=bamnames
         self.contigloc=contigloc
+        self.contigdict=None #Initialise as None
         try:
             if len(libno)==len(bamnames):
                 pass
@@ -124,7 +126,7 @@ class DataLoader(object):
         #np.loadtxt autoignores the header
         print "step 1"
         print datetime.datetime.now().time()
-        self.contigNames=list(set(self.parsetsv(covname)[:,0]))
+        self.contigNames=list(set(self.parsetsv(covname)[:,0])) #First column of coverage file has all contigs
         print "step2"
         print datetime.datetime.now().time()
         self.links=self.parsetsv(linksname) #Get all links
@@ -135,6 +137,11 @@ class DataLoader(object):
         print datetime.datetime.now().time()
         self.getcovs(covname) #Extract coverage mean and variance - defines self.coverages as
         #dict[bamname][tigname]=[coveragemean,coveragesd]
+        print "step5"
+        print datetime.datetime.now().time()
+        self.extractcontigs(self.contigNames,self.contigloc)
+        print "Contigs loaderd"
+        print datetime.datetime.now().time()
 
     def parsetsv(self,textfile="links.tsv",delim='\t',comment='#'):
         ###Need to extend to attempt to detect delimiter
@@ -177,4 +184,66 @@ class DataLoader(object):
         except:
             print "Unidentified Error occurred"
             raise
+
+    def extractcontigs(self,contignames,contigloc,header=True):
+        '''Just assigns contigs file via contigloc.
+        Temporary just for use when making scaffold
+        Will extract the text for that contig'''
+        #~ print "Starting contig extraction"
+        if isinstance(self.contigdict,type(None)):
+            curname=None
+            try:
+                if isinstance(contignames,list):
+                    re_contignames=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames] #Excludes decimal follow on in name
+                    #I.E contig1 will not match contig11 in the search for the contig name in the header
+                    #Any extra char after the contig a int (since other contig names might conflict)
+                    self.contigdict={}
+                    with open(contigloc,'r') as Contigs:
+                        head=Contigs.readline()
+                        if not head.startswith('>'):
+                            print "An error in file format"
+                            raise TypeError("Not a FASTA file:")
+                        Contigs.seek(0)
+                        Go=False
+                        for line in Contigs:
+                            if line.startswith('>'):
+                                if any(not isinstance(regexp.search(line),type(None)) for regexp in re_contignames):
+                                    curname=self.findname(contignames,line)
+                                    self.contigdict[curname]=[]
+                                    Go=True
+                                else:
+                                    Go=False
+                            elif not isinstance(curname,type(None)) and not line.startswith('>') and Go:
+                                self.contigdict[curname].append(line.translate(None,'\n')) #Adds sequence line to current contig
+                                #Also removes all line breaks
+                            else:
+                                pass
+                    for contig in self.contigdict.keys():
+                        self.contigdict[contig]=''.join(self.contigdict[contig]) #Turns into large string
+                else:
+                    print "List of contigs error"
+                    raise TypeError("Need list of contigs to form contigdict")
+            except:
+                print "Another error"
+                print self.contigNames, "These are the names of the contigs"
+                raise
+        else:
+            try:
+                return self.contigdict[contignames]
+            except:
+                print "Probably a key error"
+                print contignames
+                print self.contigdict
+                raise
+                
+    def findname(self,contignames,line):
+        reg_exp=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames]
+        finalname=None
+        for i,contigname in enumerate(reg_exp):
+            if not isinstance(contigname.search(line),type(None)):
+                #print contigname
+                finalname=contignames[i]
+            else:
+                pass
+        return finalname
         

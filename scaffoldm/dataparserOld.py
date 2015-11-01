@@ -91,10 +91,14 @@ class DataParser(object):
             self.vecreadCounts(dirty=not clean)
             print "Finished getting dirty counts"
             print datetime.datetime.now().time()
-        if clean:
-            return self.cleanreadcounts[contig1][contig2]
-        if not clean:
-            return self.readcounts[contig1][contig2]
+        try:
+            if clean:
+                return self.cleanreadcounts[contig1][contig2]
+            if not clean:
+                return self.readcounts[contig1][contig2]
+        except:
+            print "It seem there was an error.", contig1,contig2
+            return [0,0,0,0]
     def vecreadCounts(self,dirty=False,cleanedlinks=None):
         if not dirty and isinstance(cleanedlinks,type(None)):
             links=self.cleanedlinks
@@ -104,7 +108,7 @@ class DataParser(object):
             links=cleanedlinks
         Graph={}
         tigs1=links[:,:] #indices to order first column
-        tigs2=links[:,:] #Indices to order second column
+        tigs2=np.copy(tigs1)
         tigs2[:,[0,1]]=tigs2[:,[1,0]]
         double=np.vstack((tigs1,tigs2)) #flipped array and went left to right
         double=double[double[:,0].argsort(),:] #Sorts by the first column
@@ -123,20 +127,16 @@ class DataParser(object):
                     key=pd.unique(array[:,0])[0] #Should be one contig
                     Graph[key]={}
                 if np.size(array)==3:
-                    subarrays=np.vsplit(array[array[:,1].argsort(),:],np.unique(array[array[:,1].argsort(),1],return_index=True)[1])
-                    for subarray in subarrays:
-                        if np.size(subarray)>0:
-                            key2=pd.unique(subarray[1])[0]
-                            counts=np.unique(subarray[2],return_counts=True)
-                            Graph[key][key2]=self.countstocount(counts)
+                    key2=array[0][1]
+                    ori=tuple(array[0][2]) #Gets tuple out
+                    Graph[key][key2]=self.countstocount(ori)
                     
                 else:
                     subarrays=np.vsplit(array[array[:,1].argsort(),:],np.unique(array[array[:,1].argsort(),1],return_index=True)[1])
                     for subarray in subarrays:
                         if np.size(subarray)>0:
                             key2=pd.unique(subarray[:,1])[0]
-                            
-                            counts=np.unique(subarray[:,2],return_counts=True)
+                            counts=np.array(np.unique(subarray[:,2],return_counts=True))
                             Graph[key][key2]=self.countstocount(counts)
         if not dirty:
             self.cleanreadcounts=Graph
@@ -145,19 +145,33 @@ class DataParser(object):
     def countstocount(self,nparray):
         counts=[0,0,0,0]
         paired=np.array([nparray[0],nparray[1]]).T #Turns it into array with [orientations]
-        for ori,count in paired:
-            ori=tuple(ori) #For easy comparison
+        if isinstance(nparray,tuple):
+            ori=tuple(nparray)
             if ori==(1,0):
-                counts[0]=count
+                counts[0]=1
             elif ori==(0,1):
-                counts[1]=count
+                counts[1]=1
             elif ori==(1,1):
-                counts[2]=count
+                counts[2]=1
             elif ori==(0,0):
-                counts[3]=count
+                counts[3]=1
             else:
                 print ori, "This is an odd happenstance"
-        return counts
+            return counts
+        else:
+            for ori,count in paired:
+                ori=tuple(ori) #For easy comparison
+                if ori==(1,0):
+                    counts[0]=count
+                elif ori==(0,1):
+                    counts[1]=count
+                elif ori==(1,1):
+                    counts[2]=count
+                elif ori==(0,0):
+                    counts[3]=count
+                else:
+                    print ori, "This is an odd happenstance"
+            return counts
             
     def readCounts(self,contig1,contig2,linksfile=None,clean=False):
         '''Gets the number of links between two contigs
@@ -286,20 +300,20 @@ class DataParser(object):
                 for contig2 in connected:
                     if (contig1,contig2) not in done and (contig2,contig1) not in done:
                         if dirty:
-                            Counts=self.getcounts(clean=False,contig1,contig2) #The 4 orientations
+                            Counts=self.getcounts(not dirty,contig1,contig2) #The 4 orientations
                             for i,links in enumerate(Counts):
                                 if links!=0:
                                     network2.write("{0}\t{1}\t{2}\t{3}\t{4}\n".format(contig1,\
                                     self.linkorientation(i),contig2,links,removed[contig1][contig2]))
                         elif not dirty and not final:
-                            Counts=np.array(self.getcounts(clean=True,contig1,contig2))
+                            Counts=np.array(self.getcounts(not dirty,contig1,contig2))
                             index=np.arange(len(Counts))
                             index=index[Counts==max(Counts)]
                             if len(index)>0:                               
                                 network2.write("{0}\t{1}\t{2}\t{3}\t{4}\n".format(contig1,\
                                 self.linkorientation(index),contig2,max(Counts),removed[contig1][contig2]))
                         if final:
-                            Counts=self.getcounts(clean=True,contig1,contig2)
+                            Counts=self.getcounts(True,contig1,contig2)
                             network2.write("{0}\t{1}\t{2}\t{3}\n".format(contig1,\
                             '(0,1)',contig2,max(Counts)))
                         done|=set([(contig1,contig2)]) #Add current pair
@@ -463,7 +477,7 @@ class DataParser(object):
         to write a flag file with possible inversions. It is checked elsewhere if the flip will ensure
         the 0,1 read orientation. For, for the righthand side this would be needing a 0,0 to flip and LHS
         a 1,1. Note that arrange is decided for each pair and is such that if it needs to flip then the prevnode will be flipped'''
-        links=np.array(self.getcounts(clean=True,prevnode,curnode))
+        links=np.array(self.getcounts(True,prevnode,curnode))
         index=np.arange(len(links))
         index=index[links==max(links)] #Assumes the maximum linked direction is used 
         #This assumption is throughout ScaffoldM
@@ -572,7 +586,7 @@ class DataParser(object):
                 doneedges|=set([edge]) #Consider current tuple
                 doneedges|=set([edge[::-1]]) #Consider the reversed tuple
                 if len(path)==1: #Force a orientation consideration on starting pair
-                    Counts=np.array(self.getcounts(clean=True,edge[0],edge[1]))
+                    Counts=np.array(self.getcounts(True,edge[0],edge[1]))
                     index=np.arange(len(Counts))
                     index=index[Counts==max(Counts)]
                     orientation=self.linkorientation(index)
@@ -646,7 +660,7 @@ class DataParser(object):
             covtest[edge]=[]
             if front:
                 #Note path[-1][1]==edge[0] by how the possible edges were decided
-                counts=np.array(self.getcounts(clean=True,path[-1][0],edge[0]))
+                counts=np.array(self.getcounts(True,path[-1][0],edge[0]))
                 index=np.arange(len(counts))
                 index=index[counts==max(counts)]
                 #~ if not isinstance(index,int):
@@ -655,7 +669,7 @@ class DataParser(object):
                 covtest[edge]+=[self.metabatprobtest(path[-1][0],edge[0])]
             elif not front:
                 #path[0][0]==edge[1] by how possible edges are evaluated
-                counts=np.array(self.getcounts(clean=True,edge[0],path[0][0])) #Reorder ensures orientation for later
+                counts=np.array(self.getcounts(True,edge[0],path[0][0])) #Reorder ensures orientation for later
                 index=np.arange(len(counts))
                 index=index[counts==max(counts)]
                 #~ if not isinstance(index,int):

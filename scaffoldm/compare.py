@@ -345,37 +345,40 @@ def Visualise(scaffoldnames,gaps,contigloc,covplot=False):
 
 def contigmap(evidencefile,coveragefile='covs.tsv'):
     Scaffolds={}
-    with tryopen(evidencefile,'','.evidence') as SSPACE:
+    with open(evidencefile,'r+') as SSPACE:
         for line in SSPACE:
             if line.startswith(">"):
                 parts=line.split('|')
-                scaffold=line[0].strip('>')
+                scaffold=parts[0].strip('>')
                 Scaffolds[scaffold]=[]
             else:
                 parts=line.split('|')[0] #tig name - in form f_tign
-                Scaffolds[scaffold]+=parts
-    with tryopen(coveragefile,'','') as covs:
+                if parts!='\n':
+                    if parts.startswith('r'):
+                        parts='f'+parts[1:]
+                    Scaffolds[scaffold]+=[parts]
+    with open(coveragefile,'r+') as covs:
         covs.readline() #Move paste header
         orderedtigs=[]
         for line in covs:
-            orderedtigs+=line.split('\t')[0] #Contig name
+            orderedtigs.append(line.split('\t')[0]) #Contig name
     N_tigs=len(orderedtigs) #Number of contigs
     #map f_tigi to orderedtigs[i] in dictionary
     Swapdict={"{0}{1}".format('f_tig',i):orderedtigs[i-1] for i in range(1,N_tigs+1)}
-    Mapped={scaffold:[Swapdict[x] for x in Scaffolds[scaffold]] for scaffold in Scaffolds}
+    Mapped={scaffold:[Swapdict[contig] for contig in contigs] for scaffold,contigs in Scaffolds.iteritems()}
+    print Mapped
     return Mapped
-def scaftograph(scaf):
-    ''' Turns dict of form {key:list_edges,key2:list_edges2} into
-    a dict of {edge1:connectededges,edge2:connectededges}'''
-    graph={}
-    for scaffold,edges in scaf.iteritems():
-        for i,edge in enumerate(edges):
-            if edge not in graph:
-                graph[edge]=[]
-            if i<len(edges)-1:
-                graph[edge]+=[edges[i+1]]
-    return graph
-
+    
+def scaffoldtoedges(mapped):
+    SS_data=np.zeros((1,3))
+    for i,(scaffold,contigs) in enumerate(mapped.iteritems()):
+        for j,contig in enumerate(contigs):
+            if j<len(contigs)-1:
+                SS_data=np.vstack((SS_data,np.array([contig,'(0,1)',contigs[j+1]])))
+    SS_data=SS_data[1:,:] #Remove initial dummy row
+    np.savetxt('SSPACE_Edges.txt',SS_data,fmt='%s',delimiter='\t',newline='\n', header='Edge1\trel\tEdge2\n')
+    return SS_data
+    
 def graphtosif(self,graph,graphname,removed=False):
     #print graphname, "This is the supposed graph being parsed"
     #print "\n",graph
@@ -391,6 +394,7 @@ def graphtosif(self,graph,graphname,removed=False):
         for contig in graph:
             contigs.write("{0}".format(contig))
     return
+    
 def addcol(filename,column_s,header,d='\t'):
     '''Takes a text file containing tab separated columns and adds tab-separated columns
     to the end. This is primarily for updating the .txt files using in Cytoscape with additional
@@ -415,9 +419,8 @@ def addcol(filename,column_s,header,d='\t'):
     return
         
 def sspaceconvert(evidencefile,coveragefile='covs.tsv'):
-    Mapped=contigmap(evidencefile,coveragefile='covs.tsv')
-    Final=scaftograph(Mapped)
-    return Final
+    Mapped=scaffoldtoedges(contigmap(evidencefile,coveragefile='covs.tsv'))
+    return Mapped
     
 def plotcoverage(name):
     return

@@ -105,7 +105,8 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
                             data.bamnames,
                             data.contigNames,
                             data.contigloc,
-                            data.tiglen)
+                            data.tiglen,
+                            data.contigdict)
     #Tells the parser to process the data
     print "Onto parsing the data"
     parser.parse()
