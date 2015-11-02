@@ -90,7 +90,7 @@ class DataParser(object):
         self.pairedcoverage=None
         self.p_lower=0.05   #Prob distance for accepting
         self.p_upper=0.95   #Prob distance for rejection
-        self.contigdict=None
+        self.contigdict=All_contigs
     def tigin(self,contig1,linksfile):
         '''Uses numpy vectorised functions to check if a contig
         is present in a linksfile'''
@@ -485,7 +485,7 @@ class DataParser(object):
         for scaf in Scaffolds: #Loop over the constructed scaffolds
             scaf1={} #Make a dict for storing  just one scaffold
             scaf1[scaf]=Scaffolds[scaf] #Dict with one entry -structure expected by scaffold.scaf
-            self.scaffoldset[scaf]=scaffold.Scaffold(scaf1,scaf,All_contigs,linesize=70,contigloc=self.contigloc) #Makes one scaffold structure
+            self.scaffoldset[scaf]=scaffold.Scaffold(scaf1,scaf,self.contigdict,linesize=70,contigloc=self.contigloc) #Makes one scaffold structure
             #and stores it in the dictionary for later calling
         return
 
@@ -917,9 +917,6 @@ class DataParser(object):
         print "The scaffolds are now done"
         print datetime.datetime.now().time()
         sys.stdout.flush()
-        print "Now loading the contigs into memory"
-        print datetime.datetime.now().time()
-        self.extractcontigs(self.contignames,self.contigloc)
         print "The scaffolds are now being printed"
         print datetime.datetime.now().time()
         sys.stdout.flush()
@@ -944,8 +941,8 @@ class DataParser(object):
         try:
             with open(filename+".fasta",'a+') as scaffolds:
                 for key,scaffold in self.scaffoldset.iteritems():
-                    bunch.extend(scaffold.printscaffold(filename+".fasta",bunch_tigs,self.contigdict))
-                    if len(bunch)==2*bunchsize:
+                    bunch.extend(scaffold.printscaffold(seq_dict=self.contigdict,filename=filename+".fasta",bunch=bunch_tigs))
+                    if len(bunch)==bunchsize:
                         scaffolds.write("".join(bunch))
                         bunch=[]
                 scaffolds.write("".join(bunch))
@@ -1230,61 +1227,3 @@ class DataParser(object):
         for easy and fast sequence extraction without loading all of
         it into memory.'''
         return
-    def extractcontigs(self,contignames,contigloc,header=True):
-        '''Just assigns contigs file via contigloc.
-        Temporary just for use when making scaffold
-        Will extract the text for that contig'''
-        #~ print "Starting contig extraction"
-        if isinstance(self.contigdict,type(None)):
-            curname=None
-            try:
-                if isinstance(contignames,list):
-                    re_contignames=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames]
-                    #Any extra char after the contig a int (since other contig names might conflict)
-                    self.contigdict={}
-                    with open(contigloc,'r') as Contigs:
-                        head=Contigs.readline()
-                        if not head.startswith('>'):
-                            print "An error in file format"
-                            raise TypeError("Not a FASTA file:")
-                        Contigs.seek(0)
-                        Go=False
-                        for line in Contigs:
-                            if line.startswith('>'):
-                                if any(not isinstance(regexp.search(line),type(None)) for regexp in re_contignames):
-                                    curname=self.findname(re_contignames,line)
-                                    self.contigdict[curname]=[]
-                                    Go=True
-                                else:
-                                    Go=False
-                            elif not isinstance(curname,type(None)) and not line.startswith('>') and Go:
-                                self.contigdict[curname].append(line.translate(None,'\n')) #Adds sequence line to current contig
-                            else:
-                                pass
-                    for contig in self.contigdict.keys():
-                        self.contigdict[contig]=''.join(self.contigdict[contig]) #Turns into large string
-                else:
-                    print "List of contigs error"
-                    raise TypeError("Need list of contigs to form contigdict")
-            except:
-                print "Another error"
-                print self.contignames, "These are the names of the contigs"
-                raise
-        else:
-            try:
-                return self.contigdict[contignames]
-            except:
-                print "Probably a key error"
-                print contignames
-                print self.contigdict
-                raise
-    def findname(self,contignames,line):
-        reg_exp=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames]
-        finalname=None
-        for i,contigname in enumerate(reg_exp):
-            if not isinstance(contigname.search(line),type(None)):
-                #print contigname
-                finalname=contignames[i]
-            else:
-                pass
-        return finalname

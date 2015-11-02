@@ -140,7 +140,7 @@ class DataLoader(object):
         print "step5"
         print datetime.datetime.now().time()
         self.extractcontigs(self.contigNames,self.contigloc)
-        print "Contigs loaderd"
+        print "Contigs loaded"
         print datetime.datetime.now().time()
 
     def parsetsv(self,textfile="links.tsv",delim='\t',comment='#'):
@@ -194,7 +194,8 @@ class DataLoader(object):
             curname=None
             try:
                 if isinstance(contignames,list):
-                    re_contignames=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames] #Excludes decimal follow on in name
+                    #reg_list=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames] #Excludes decimal follow on in name
+                    re_contignames=re.compile("|".join(["{0}[^\d]".format(contigname) for contigname in contignames])) #|{0}
                     #I.E contig1 will not match contig11 in the search for the contig name in the header
                     #Any extra char after the contig a int (since other contig names might conflict)
                     self.contigdict={}
@@ -207,8 +208,12 @@ class DataLoader(object):
                         Go=False
                         for line in Contigs:
                             if line.startswith('>'):
-                                if any(not isinstance(regexp.search(line),type(None)) for regexp in re_contignames):
-                                    curname=self.findname(contignames,line)
+                                match=re_contignames.search(line)
+                                if not isinstance(match,type(None)):
+                                    #curname=self.findname(contignames,reg_list,line)
+                                    curname=match.group(0)
+                                    print curname,
+                                    print datetime.datetime.now().time()
                                     self.contigdict[curname]=[]
                                     Go=True
                                 else:
@@ -236,9 +241,11 @@ class DataLoader(object):
                 print self.contigdict
                 raise
                 
-    def findname(self,contignames,line):
-        reg_exp=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames]
+    def findname(self,contignames,reg_exp,line):
+        '''Checks which contig was matches in case of similarly name tigs, eg contig1 vs contig11'''
+        #reg_exp=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames] Removed to avoid multiple compilations
         finalname=None
+        #There has to be better way to do this
         for i,contigname in enumerate(reg_exp):
             if not isinstance(contigname.search(line),type(None)):
                 #print contigname

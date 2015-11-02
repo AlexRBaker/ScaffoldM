@@ -206,7 +206,7 @@ class Scaffold(object):
                         self.scaffold[scaffoldname][tig],self.extractcontig(tig))+\
                     self.scaffold[scaffoldname][tig][gapsize]*"N").translate(None,"\n")
                 ContigSeq+="\n"
-            return [scafheader,ContigSeq]
+                return [''.join([scafheader,ContigSeq])]
 
         with open(filename,'a+') as scaffile:
             ##Need to add check to ensure header is written on its own line
