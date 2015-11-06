@@ -379,7 +379,7 @@ def scaffoldtoedges(mapped):
     np.savetxt('SSPACE_Edges.txt',SS_data,fmt='%s',delimiter='\t',newline='\n', header='Edge1\trel\tEdge2\n')
     return SS_data
     
-def graphtosif(self,graph,graphname,removed=False):
+def graphtosif(graph,graphname,removed=False):
     #print graphname, "This is the supposed graph being parsed"
     #print "\n",graph
     done=set([])
@@ -1007,8 +1007,10 @@ if __name__ == "__main__": ###Check if arguments coming in from command line
             totprocess("Initial_links","Threshold_links","Cov_Links_links")
         #print os.getcwd()
         if os.path.isdir('./standard_out'): #Only go if SSPACE worked
-            SSPACEgraph=sspaceconvert("./standard_out/standard_out.final")
-            graphtosif(SSPACEgraph)
+            SSPACEgraph=sspaceconvert("./standard_out/standard_out.final.evidence")
+            graphtosif(SSPACEgraph,"SSPACE_CONNECTIONS")
+            #os.procces() - make the graphs to compare SSPACE and ScaffoldM
+            os.system("python ./process.py")
         binned=True
         if binned:
             binwrapper('.','Node_BinClass.txt','bins_raw/')

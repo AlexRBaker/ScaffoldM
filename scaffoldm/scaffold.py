@@ -50,7 +50,6 @@ class Scaffold(object):
     def __init__(self,
                 scaffold,
                 scaffoldname,
-                All_contigs,
                 linesize=70,
                 contigloc='Dupes.fna',
                 formatted=False,
@@ -71,78 +70,18 @@ class Scaffold(object):
         self.linesize=linesize
         self.contigloc=contigloc
         self.contigdict=None
-    
-    def extractcontigs(self,contignames):
-        return All_contigs[contigname]
-    #~ def extractcontigs(self,contignames,contigloc,header=True):
-        #~ '''Just assigns contigs file via contigloc.
-        #~ Temporary just for use when making scaffold
-        #~ Will extract the text for that contig'''
-        #print "Starting contig extraction"
-        #~ if isinstance(self.contigdict,type(None)):
-            #~ curname=None
-            #~ try:
-                #~ if isinstance(contignames,list):
-                    #~ re_contignames=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames]
-                    #~ #Any extra char after the contig a int (since other contig names might conflict)
-                    #~ self.contigdict={}
-                    #~ with open(contigloc,'r') as Contigs:
-                        #~ head=Contigs.readline()
-                        #~ if not head.startswith('>'):
-                            #~ print "An error in file format"
-                            #~ raise TypeError("Not a FASTA file:")
-                        #~ Contigs.seek(0)
-                        #~ Go=False
-                        #~ for line in Contigs:
-                            #~ if line.startswith('>') and any(not isinstance(regexp.search(line),type(None)) for regexp in re_contignames):
-                                #~ curname=self.findname(contignames,line)
-                                #~ self.contigdict[curname]=[]
-                                #~ Go=True
-                            #~ elif not isinstance(curname,type(None)) and not line.startswith('>') and Go:
-                                #~ self.contigdict[curname].append(line.translate(None,'\n')) #Adds sequence line to current contig
-                            #~ elif line.startswith('>'):
-                                #~ Go=False
-                          #~ #  if line.startswith('>'):
-                             #~ #   if any(not isinstance(regexp.search(line),type(None)) for regexp in re_contignames):
-                             #~ #       curname=self.findname(re_contignames,line)
-                             #~ #       self.contigdict[curname]=[]
-                              #~ #      Go=True
-                             #~ #   else:
-                            #~ #        Go=False
-                           #~ # elif not isinstance(curname,type(None)) and not line.startswith('>') and Go:
-                           #~ #     self.contigdict[curname].append(line.translate(None,'\n')) #Adds sequence line to current contig
-                            #~ else:
-                                #~ pass
-                    #~ for contig in self.contigdict.keys():
-                        #~ self.contigdict[contig]=''.join(self.contigdict[contig]) #Turns into large string
-                #~ else:
-                    #~ print "List of contigs error"
-                    #~ raise TypeError("Need list of contigs to form contigdict")
-            #~ except:
-                #~ print "Another error"
-                #~ print self.contigNames, "These are the names of the contigs"
-                #~ raise
-        #~ else:
-            #~ try:
-                #~ return self.contigdict[contignames]
-            #~ except:
-                #~ print "Probably a key error"
-                #~ print contignames
-                #~ print self.contigdict
-                #~ raise
+    def __str__(self):
+        '''returns summary information on the scaffold'''
+        return "This is scaffold {0}\nThis is the structure of the scaffold {1}\nThere are {2} contigs.\n".\
+        format(self.name,self.scaffold[self.name],len(self.scaffold[self.name]))
+    def extractcontig(self,contigname,All_contigs):
+        try:
+            return All_contigs[contigname]
+        except KeyError:
+            print All_contigs.keys(), "These should be the contig names"
+            print contigname
+            raise
 
-    #~ def findname(self,contignames,line):
-        #~ reg_exp=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames]
-        #~ finalname=None
-        #~ for i,contigname in enumerate(reg_exp):
-            #~ if not isinstance(contigname.search(line),type(None)):
-                #~ #print contigname
-                #~ finalname=contignames[i]
-            #~ else:
-                #~ pass
-        #~ return finalname
-    #all_keys = set().union(*(d.keys() for d in mylist)) gets all
-    # from list of dicts
     def arrangetigs(self, contigname,contigspec,tig_seq,header=False):
         ##Simple, takes slice and rearranges contig for scaffold making
         ##Orientation - 0 normal, 1 flipped
@@ -193,7 +132,7 @@ class Scaffold(object):
                     scaffile.write(scafheader)
                     for tig in Contigs:
                         ContigSeq=(self.arrangetigs(tig,\
-                        self.scaffold[scaffoldname][tig],self.extractcontig(tig))+\
+                        self.scaffold[scaffoldname][tig],self.extractcontig(tig,seq_dict))+\
                         self.scaffold[scaffoldname][tig][gapsize]*"N").translate(None,"\n")
                         #Get the oriented and gapped sequence for that contig with all line breaks
                         #removed
@@ -203,7 +142,7 @@ class Scaffold(object):
                 scafheader=">{0}|Contigs:{1}\n".format(scaffoldname,",".join(Contigs))
                 for tig in Contigs:
                     ContigSeq+=(self.arrangetigs(tig,\
-                        self.scaffold[scaffoldname][tig],self.extractcontig(tig))+\
+                        self.scaffold[scaffoldname][tig],self.extractcontig(tig,seq_dict))+\
                     self.scaffold[scaffoldname][tig][gapsize]*"N").translate(None,"\n")
                 ContigSeq+="\n"
                 return [''.join([scafheader,ContigSeq])]
@@ -266,6 +205,7 @@ class Scaffold(object):
                 if len(stringmod)>=i+chunksize:
                     yield stringmod[i:i+chunksize]+end
                 else:
+                    print "faggot"
                     yield stringmod[i:i+chunksize]
         except TypeError:
             print "end must be concatenable to string, \

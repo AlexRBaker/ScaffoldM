@@ -405,9 +405,16 @@ class DataParser(object):
         Graph={}
         tigs1=links[links[:,0].argsort(),0:2] #indices to order first column
         tigs2=links[links[:,1].argsort(),0:2] #Indices to order second column
+        
         double=np.vstack((tigs1,np.fliplr(tigs2))) #flipped array and went left to right
         double=double[double[:,0].argsort(),0:2] #Sorts by the first column
+        if not dirty:
+            np.savetxt('col1_sort.txt',tigs1,fmt='%s',delimiter='\t',newline='\n', header='Edge1\tEdge2\n')
+            np.savetxt('col2_sort.txt',tigs2,fmt='%s',delimiter='\t',newline='\n', header='Edge1\tEdge2\n')
+            np.savetxt('colstack_sort.txt',double,fmt='%s',delimiter='\t',newline='\n', header='Edge1\tEdge2\n')
+        #print double
         splitdouble=np.vsplit(double,np.unique(double[:,0],return_index=True)[1]) #array split by first col
+        #print splitdouble
         arraydict={}
         for array in splitdouble:
             if np.size(array)>0: 
@@ -416,28 +423,39 @@ class DataParser(object):
                 if np.size(array)==2:
                     key=array[0][0] #Get first entry
                     if 2>threshold:
-                        arraydict[key]=array
+                        arraydict[key]=array[array[:,1].argsort(),:]
                     Graph[key]=[]
                 else:
                     key=pd.unique(array[:,0]) #Should be one contig
                 if len(key)==1:
                     key=key[0] #Should now be the string
                     Graph[key]=[]
-                    arraydict[key]=array
+                    arraydict[key]=array[array[:,1].argsort(),:]
                 elif isinstance(key,str):
-                    pass
+                    Graph[key]=[]
+                    arraydict[key]=array[array[:,1].argsort(),:]
                 else:
                     print "Dunno what happened here"
                 if np.size(array)==2:
                     counts=np.unique(array[0],return_counts=True)
                 else:
                     counts=np.unique(array[:,1],return_counts=True)
-                candidates=counts[0][np.logical_and(counts[1]>=threshold,np.array(self.metabatprobtest(key,candidate) for candidate in counts[0])<self.p_upper)]
+                    #print key, 'current', counts[0][counts[1]>=threshold], 'possible'
+                #print np.array([self.metabatprobtest(key,candidate) for candidate in counts[0]]), "The probabilistic distances"
+                candidates=counts[0][np.logical_and(counts[1]>=threshold,np.array([self.metabatprobtest(key,candidate) for candidate in counts[0]])<self.p_upper)]
+                #candidates=counts[0][counts[1]>=threshold]
+                #print key, "the current contig", candidates, "These are the candidate pairs"
                 if len(candidates)>0:
+                    #print key
+                    #print candidates
                     Graph[key]=np.concatenate((Graph[key],candidates),axis=0)
         #Currently has duplicate eg contig1 - contig2 and contig2 to contig 1 as entries
         #Shouldn't matter - handled in scaffold creation
         self.doubledict=arraydict #Dictionary of relevant arrays for each contig
+        unused_keys=set(self.contignames)-set(Graph.keys()) #Contignames not in the current graph
+        for contigname in unused_keys:
+            #Create an entry for every contig
+            Graph[contigname]=[] #Add an isolated scaffold
         if not dirty:
             self.graph=Graph
         return Graph
@@ -448,6 +466,9 @@ class DataParser(object):
         Scaffolds={}
         isolated=self.lonetigs(Graph)
         self.isolated=isolated
+        print len(self.isolated), "This is the number of isolated contigs"
+        #print Graph
+        print len(Graph), "This is the number of contigs considered"
         for tig in isolated:
             #Add all contigs with no links as individual scaffolds
             #Also remove from both Graph and OrientedGraph
@@ -485,7 +506,7 @@ class DataParser(object):
         for scaf in Scaffolds: #Loop over the constructed scaffolds
             scaf1={} #Make a dict for storing  just one scaffold
             scaf1[scaf]=Scaffolds[scaf] #Dict with one entry -structure expected by scaffold.scaf
-            self.scaffoldset[scaf]=scaffold.Scaffold(scaf1,scaf,self.contigdict,linesize=70,contigloc=self.contigloc) #Makes one scaffold structure
+            self.scaffoldset[scaf]=scaffold.Scaffold(scaf1,scaf,linesize=70,contigloc=self.contigloc) #Makes one scaffold structure
             #and stores it in the dictionary for later calling
         return
 
@@ -662,6 +683,7 @@ class DataParser(object):
         Now also has a coverage based test. This does not form links but can aid
         in accepting or rejecting links which have passed earlier tests. In the cases
         of ambiguity no links are made, this should reduce false positives.'''
+        #print posedges, "These are the possible edges"
         newedge=None
         #best can =1 since earlier threshold for edges was 5
         maxcounts=[]
@@ -703,6 +725,7 @@ class DataParser(object):
         #Whether any of the coverages are suitable for use in decision making
         covaccept={key: [True  if x<=self.p_lower  else False for x in covtest[key]] for key in covtest}
         covreject={key: [True if x>=self.p_upper else False for x in covtest[key]] for key in covtest}
+        
         #maxcounts.append((max(self.readCounts(path,edge),
         if maxcounts!=[]:
             best=max(maxcounts)
@@ -896,10 +919,15 @@ class DataParser(object):
             #stdinsert[name]=[float(x[2]) for x in insertfile if name+".bam" in x]
         self.mean=meaninsert
         self.std=stdinsert
-        cleanedlinks=linksfile[self.veclowerdist(linksfile)<self.veccutoff(linksfile),:]
+        distances=self.veclowerdist(linksfile)
+        cutoffs=self.veccutoff(linksfile)
+        cleanedlinks=linksfile[distances<=cutoffs,:]
+        #np.savetxt('new_links.txt',cleanedlinks,fmt='%s',delimiter='\t',newline='\n', header='')
+        #np.savetxt('old_links.txt',np.hstack((linksfile,np.atleast_2d(distances.astype(str)).T)),fmt='%s',delimiter='\t',newline='\n', header='')
         self.cleanedlinks=cleanedlinks
-        print np.size(cleanedlinks), "The new Size"
-        print np.size(linksfile), "the old size"
+        print np.size(cleanedlinks[:,0]), "The new Size"
+        print np.size(linksfile[:,0]), "the old size"
+        #np.savetxt('new_links.txt',cleanedlinks,fmt='%s',delimiter='\t',newline='\n', header='')
         return
         
     def parse(self):
@@ -938,29 +966,41 @@ class DataParser(object):
     def printscaffolds(self,filename='testScaffold',bunch_tigs=True):
         bunchsize=1000 #Number of scaffolds to store in memory
         bunch=[]
+        print len(self.scaffoldset), "#scaffolds"
+        for key,scaffold in self.scaffoldset.iteritems():
+            print scaffold
         try:
             with open(filename+".fasta",'a+') as scaffolds:
-                for key,scaffold in self.scaffoldset.iteritems():
+                for scaffold in self.scaffoldset.itervalues():
                     bunch.extend(scaffold.printscaffold(seq_dict=self.contigdict,filename=filename+".fasta",bunch=bunch_tigs))
                     if len(bunch)==bunchsize:
+                        #print bunch, "This is the bunch"
                         scaffolds.write("".join(bunch))
                         bunch=[]
+                #print bunch, "This is the bunch"
                 scaffolds.write("".join(bunch))
                         
         except AttributeError:
+            print self.scaffoldset, "This is the set of scaffolds"
             print 'These scaffolds do not appear to be the scaffold class'
+            raise
+        except KeyError:
+            print self.contignames, "These are the contig names"
+            print self.contigdict
+            raise
         return
     def veclowerdist(self,alllinks):
         '''severe lower bound on gap between
          reads (ignores gap between contigs)'''
         size=len(alllinks[:,1])
+        indices=np.arange(size)
         dist1=np.zeros(size)
         dist2=np.zeros(size)
         #Get the indices for each orientation pair
-        ori11=np.arange(size)[alllinks[:,4].astype(int)==1]
-        ori10=np.arange(size)[alllinks[:,4].astype(int)==0]
-        ori21=np.arange(size)[alllinks[:,7].astype(int)==1]
-        ori20=np.arange(size)[alllinks[:,7].astype(int)==1]
+        ori11=indices[alllinks[:,4].astype(int)==1]
+        ori10=indices[alllinks[:,4].astype(int)==0]
+        ori21=indices[alllinks[:,7].astype(int)==1]
+        ori20=indices[alllinks[:,7].astype(int)==0]
         dist1[ori11]=alllinks[ori11,3].astype(int)
         dist1[ori10]=alllinks[ori10,2].astype(int)-alllinks[ori10,3].astype(int)
         dist2[ori21]=alllinks[ori21,6].astype(int)
@@ -973,6 +1013,7 @@ class DataParser(object):
         indices=np.arange(size)
         bamindices={bam:indices[alllinks[:,8]==bam+".bam"] for bam in self.bamnames}
         for name in self.bamnames:
+            #print name,bamindices[name]
             thresh[bamindices[name]]=self.mean[name][0]\
             +cutoff*self.std[name][0]
         return thresh
@@ -1150,16 +1191,17 @@ class DataParser(object):
         prior_value=sigma**2*(1/(1-norm.cdf(d,mu,sigma))*norm.pdf(d,mu,sigma))
         return ML_value+prior_value
 
-    def metabatprobtest(self,contig1,contig2,lower=0.05,upper=0.95):
+    def metabatprobtest(self,contig1,contig2):
         pairs=self.gettigcov(contig1,contig2)
         prob=1
         j=0
         for i,pair in enumerate(pairs):
             repack=zip(*pair)
-            #print repack
             if 0 not in repack[1]:
                 prob*=self.distancecalc(repack[0],repack[1])
                 j+=1
+                if prob==0:
+                    print repack
             if 0 in repack[1]: #Conservative method
                 #For dealing with probabilities
                 prob*=1
@@ -1219,11 +1261,4 @@ class DataParser(object):
         with open('ExtractionList.fna','w') as extract:
             for tig in self.contignames:
                 extract.write(">{0}\n".format(tig))
-        return
-#End loading contig loading to hopefully only need to open the contig file once.
-    def makecontigs():
-        '''Takes the large file of all contigs and writes a folder 
-        containing names sequence files for each contig. This makes
-        for easy and fast sequence extraction without loading all of
-        it into memory.'''
         return

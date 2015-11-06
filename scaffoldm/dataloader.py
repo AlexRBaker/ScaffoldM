@@ -195,7 +195,7 @@ class DataLoader(object):
             try:
                 if isinstance(contignames,list):
                     #reg_list=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames] #Excludes decimal follow on in name
-                    re_contignames=re.compile("|".join(["{0}[^\d]".format(contigname) for contigname in contignames])) #|{0}
+                    re_contignames=re.compile("|".join(["{0}[^\d]".format(re.escape(contigname)) for contigname in contignames])) #|{0}
                     #I.E contig1 will not match contig11 in the search for the contig name in the header
                     #Any extra char after the contig a int (since other contig names might conflict)
                     self.contigdict={}
@@ -211,9 +211,9 @@ class DataLoader(object):
                                 match=re_contignames.search(line)
                                 if not isinstance(match,type(None)):
                                     #curname=self.findname(contignames,reg_list,line)
-                                    curname=match.group(0)
-                                    print curname,
-                                    print datetime.datetime.now().time()
+                                    curname=match.group(0)[:-1] #Get match and strip the [^\d] char
+                                    #print curname
+                                    #print datetime.datetime.now().time()
                                     self.contigdict[curname]=[]
                                     Go=True
                                 else:
@@ -225,6 +225,7 @@ class DataLoader(object):
                                 pass
                     for contig in self.contigdict.keys():
                         self.contigdict[contig]=''.join(self.contigdict[contig]) #Turns into large string
+                    #print self.contigdict.values()[10:12] It worked properly - insanely fast
                 else:
                     print "List of contigs error"
                     raise TypeError("Need list of contigs to form contigdict")
@@ -239,18 +240,4 @@ class DataLoader(object):
                 print "Probably a key error"
                 print contignames
                 print self.contigdict
-                raise
-                
-    def findname(self,contignames,reg_exp,line):
-        '''Checks which contig was matches in case of similarly name tigs, eg contig1 vs contig11'''
-        #reg_exp=[re.compile('{0}[^\d]'.format(contigname)) for contigname in contignames] Removed to avoid multiple compilations
-        finalname=None
-        #There has to be better way to do this
-        for i,contigname in enumerate(reg_exp):
-            if not isinstance(contigname.search(line),type(None)):
-                #print contigname
-                finalname=contignames[i]
-            else:
-                pass
-        return finalname
-        
+                raise      
